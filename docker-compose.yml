@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  # Main application for development
+  ai-nutritionist-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: ai-nutritionist-dev
+    volumes:
+      - .:/app
+      - /app/.venv  # Exclude virtual environment
+    ports:
+      - "3000:3000"
+      - "8000:8000"  # For documentation server
+    environment:
+      - PYTHONPATH=/app/src
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
+    command: python -m pytest tests/ -v --watch
+    
+  # DynamoDB Local for testing
+  dynamodb-local:
+    command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-dbPath", "./data"]
+    image: amazon/dynamodb-local:latest
+    container_name: dynamodb-local
+    ports:
+      - "8001:8000"
+    volumes:
+      - "./docker/dynamodb:/home/dynamodblocal/data"
+    working_dir: /home/dynamodblocal
+
+  # Documentation server
+  docs:
+    image: squidfunk/mkdocs-material:latest
+    container_name: ai-nutritionist-docs
+    ports:
+      - "8002:8000"
+    volumes:
+      - .:/docs
+    command: serve --dev-addr=0.0.0.0:8000
+
+  # Performance testing with Locust
+  locust:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: ai-nutritionist-locust
+    ports:
+      - "8089:8089"
+    volumes:
+      - ./performance:/app/performance
+    command: locust -f performance/locustfile.py --host=http://ai-nutritionist-dev:3000
+    depends_on:
+      - ai-nutritionist-dev
+
+volumes:
+  dynamodb-data:
+
+networks:
+  default:
+    name: ai-nutritionist-network

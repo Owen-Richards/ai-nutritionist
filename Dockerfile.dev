@@ -1,0 +1,35 @@
+# Development Dockerfile for local testing
+FROM python:3.13-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        gcc \
+        g++ \
+        curl \
+        git && \
+    rm -rf /var/lib/apt/lists/*
+
+# Install AWS CLI
+RUN pip install awscli
+
+# Copy requirements
+COPY requirements.txt requirements-dev.txt ./
+
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt -r requirements-dev.txt
+
+# Copy application code
+COPY . .
+
+# Install pre-commit hooks
+RUN pre-commit install
+
+# Expose port for local development
+EXPOSE 3000
+
+# Default command
+CMD ["python", "-m", "pytest", "tests/", "-v"]

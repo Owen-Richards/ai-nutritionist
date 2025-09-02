@@ -1,0 +1,564 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: AI Nutritionist Assistant - Serverless WhatsApp/SMS meal planning bot
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 256
+    Runtime: python3.11
+    Environment:
+      Variables:
+        DYNAMODB_TABLE: !Ref UserDataTable
+        BEDROCK_REGION: !Ref AWS::Region
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Deployment environment
+
+Resources:
+  # DynamoDB Table for user data and meal plans
+  UserDataTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ai-nutritionist-users-${Environment}
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: plan_date
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+        - AttributeName: plan_date
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+  # Subscription Management Table
+  SubscriptionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ai-nutritionist-subscriptions-${Environment}
+      AttributeDefinitions:
+        - AttributeName: user_phone
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_phone
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      StreamSpecification:
+        StreamViewType: NEW_AND_OLD_IMAGES
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Project
+          Value: AI-Nutritionist
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Usage Tracking Table
+  UsageTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ai-nutritionist-usage-${Environment}
+      AttributeDefinitions:
+        - AttributeName: user_phone
+          AttributeType: S
+        - AttributeName: month
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_phone
+          KeyType: HASH
+        - AttributeName: month
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: AI-Nutritionist
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Revenue Tracking Table
+  RevenueTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ai-nutritionist-revenue-${Environment}
+      AttributeDefinitions:
+        - AttributeName: event_id
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: event_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: TimestampIndex
+          KeySchema:
+            - AttributeName: timestamp
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      BillingMode: PAY_PER_REQUEST
+      Tags:
+        - Key: Project
+          Value: AI-Nutritionist
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Affiliate Tracking Table
+  AffiliateTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ai-nutritionist-affiliates-${Environment}
+      AttributeDefinitions:
+        - AttributeName: tracking_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: tracking_id
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: AI-Nutritionist
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Commission Tracking Table
+  CommissionTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ai-nutritionist-commissions-${Environment}
+      AttributeDefinitions:
+        - AttributeName: commission_id
+          AttributeType: S
+        - AttributeName: month
+          AttributeType: S
+      KeySchema:
+        - AttributeName: commission_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: MonthIndex
+          KeySchema:
+            - AttributeName: month
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      BillingMode: PAY_PER_REQUEST
+      Tags:
+        - Key: Project
+          Value: AI-Nutritionist
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Cost Tracking Table
+  CostTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ai-nutritionist-costs-${Environment}
+      AttributeDefinitions:
+        - AttributeName: user_phone
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_phone
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+      Tags:
+        - Key: Project
+          Value: AI-Nutritionist
+        - Key: Environment
+          Value: !Ref Environment
+
+  # User Cost Tracking Table (for profit enforcement)
+  UserCostTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ai-nutritionist-user-costs-${Environment}
+      AttributeDefinitions:
+        - AttributeName: user_phone
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+        - AttributeName: month
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_phone
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: MonthIndex
+          KeySchema:
+            - AttributeName: month
+              KeyType: HASH
+            - AttributeName: user_phone
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: AI-Nutritionist
+        - Key: Environment
+          Value: !Ref Environment
+
+  # User Revenue Tracking Table
+  UserRevenueTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ai-nutritionist-user-revenue-${Environment}
+      AttributeDefinitions:
+        - AttributeName: user_phone
+          AttributeType: S
+        - AttributeName: timestamp
+          AttributeType: S
+        - AttributeName: month
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_phone
+          KeyType: HASH
+        - AttributeName: timestamp
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: MonthIndex
+          KeySchema:
+            - AttributeName: month
+              KeyType: HASH
+            - AttributeName: user_phone
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: AI-Nutritionist
+        - Key: Environment
+          Value: !Ref Environment
+
+  # User Token Balance Table
+  UserTokensTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ai-nutritionist-user-tokens-${Environment}
+      AttributeDefinitions:
+        - AttributeName: user_phone
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_phone
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      Tags:
+        - Key: Project
+          Value: AI-Nutritionist
+        - Key: Environment
+          Value: !Ref Environment
+
+  # API Gateway for Twilio webhooks
+  ApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref Environment
+      Cors:
+        AllowMethods: "'POST, GET, OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+
+  # Lambda function for handling incoming messages from any platform
+  UniversalMessageHandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ai-nutritionist-universal-handler-${Environment}
+      CodeUri: src/handlers/
+      Handler: universal_message_handler.lambda_handler
+      Events:
+        # WhatsApp webhook
+        WhatsAppWebhook:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /webhook/whatsapp
+            Method: post
+        # SMS webhook  
+        SMSWebhook:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /webhook/sms
+            Method: post
+        # Telegram webhook
+        TelegramWebhook:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /webhook/telegram
+            Method: post
+        # Facebook Messenger webhook
+        MessengerWebhook:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /webhook/messenger
+            Method: post
+        # Generic webhook for other platforms
+        GenericWebhook:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /webhook
+            Method: post
+      Environment:
+        Variables:
+          USER_TABLE_NAME: !Ref UserDataTable
+          CACHE_TABLE_NAME: !Ref PromptCacheTable
+          API_USAGE_TABLE_NAME: !Ref ApiUsageTable
+          SUBSCRIPTIONS_TABLE_NAME: !Ref SubscriptionsTable
+          USAGE_TABLE_NAME: !Ref UsageTable
+          REVENUE_TABLE_NAME: !Ref RevenueTable
+          AFFILIATE_TABLE_NAME: !Ref AffiliateTable
+          COMMISSION_TABLE_NAME: !Ref CommissionTable
+          COST_TABLE_NAME: !Ref CostTable
+          USER_COST_TABLE_NAME: !Ref UserCostTable
+          USER_REVENUE_TABLE_NAME: !Ref UserRevenueTable
+          USER_TOKENS_TABLE_NAME: !Ref UserTokensTable
+          ENVIRONMENT: !Ref Environment
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserDataTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SubscriptionsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsageTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PromptCacheTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ApiUsageTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref RevenueTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref AffiliateTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CommissionTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref CostTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserCostTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserRevenueTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserTokensTable
+        - Statement:
+          - Effect: Allow
+            Action:
+              - bedrock:InvokeModel
+              - bedrock:InvokeModelWithResponseStream
+            Resource: 
+              - !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-text-express-v1"
+              - !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0"
+        - Statement:
+          - Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+              - secretsmanager:GetSecretValue
+            Resource: 
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/ai-nutritionist/*"
+              - !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:ai-nutritionist/*"
+
+  # Lambda function for Stripe billing webhooks
+  BillingWebhookFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ai-nutritionist-billing-webhook-${Environment}
+      CodeUri: src/handlers/
+      Handler: billing_handler.lambda_handler
+      Events:
+        StripeWebhook:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /billing/webhook
+            Method: post
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SubscriptionsTable
+        - Statement:
+          - Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+            Resource: 
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/ai-nutritionist/*"
+
+  # Lambda function for scheduled meal plan generation
+  SchedulerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ai-nutritionist-scheduler-${Environment}
+      CodeUri: src/handlers/
+      Handler: scheduler_handler.lambda_handler
+      Events:
+        WeeklySchedule:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 8 ? * MON *)  # Every Monday at 8 AM UTC
+            Description: Generate weekly meal plans
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserDataTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PromptCacheTable
+        - Statement:
+          - Effect: Allow
+            Action:
+              - bedrock:InvokeModel
+            Resource: 
+              - !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-text-express-v1"
+        - Statement:
+          - Effect: Allow
+            Action:
+              - ssm:GetParameter
+              - ssm:GetParameters
+              - secretsmanager:GetSecretValue
+            Resource: 
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/ai-nutritionist/*"
+              - !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:ai-nutritionist/*"
+
+  # S3 Bucket for static web content and meal plan PDFs
+  WebContentBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub ai-nutritionist-web-${Environment}-${AWS::AccountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: false
+        BlockPublicPolicy: false
+        IgnorePublicAcls: false
+        RestrictPublicBuckets: false
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: error.html
+
+  # CloudFront Distribution for web content
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Origins:
+          - DomainName: !GetAtt WebContentBucket.RegionalDomainName
+            Id: S3Origin
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+        Enabled: true
+        DefaultRootObject: index.html
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          Compress: true
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+
+
+
+  # DynamoDB table for prompt caching and cost optimization
+  PromptCacheTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ai-nutritionist-cache-${Environment}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: cache_key
+          AttributeType: S
+      KeySchema:
+        - AttributeName: cache_key
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: AI-Nutritionist
+        - Key: Environment
+          Value: !Ref Environment
+
+  # DynamoDB table for API usage tracking and cost management
+  ApiUsageTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ai-nutritionist-api-usage-${Environment}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: usage_key
+          AttributeType: S
+        - AttributeName: date
+          AttributeType: S
+      KeySchema:
+        - AttributeName: usage_key
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: DateIndex
+          KeySchema:
+            - AttributeName: date
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: AI-Nutritionist
+        - Key: Environment
+          Value: !Ref Environment
+
+Outputs:
+  ApiGatewayUrl:
+    Description: API Gateway endpoint URL for Twilio webhook
+    Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Environment}/webhook"
+    Export:
+      Name: !Sub ${AWS::StackName}-ApiGatewayUrl
+
+  UserDataTableName:
+    Description: DynamoDB table name for user data
+    Value: !Ref UserDataTable
+    Export:
+      Name: !Sub ${AWS::StackName}-UserDataTable
+
+  WebContentBucketName:
+    Description: S3 bucket for web content
+    Value: !Ref WebContentBucket
+    Export:
+      Name: !Sub ${AWS::StackName}-WebContentBucket
+
+  CloudFrontDomainName:
+    Description: CloudFront distribution domain name
+    Value: !GetAtt CloudFrontDistribution.DomainName
+    Export:
+      Name: !Sub ${AWS::StackName}-CloudFrontDomain

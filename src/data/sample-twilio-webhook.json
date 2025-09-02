@@ -1,0 +1,12 @@
+{
+  "From": "whatsapp:+1234567890",
+  "To": "whatsapp:+1234567891", 
+  "Body": "I need a vegan meal plan for 2 people with a $50 weekly budget",
+  "MessageSid": "SM1234567890abcdef",
+  "AccountSid": "AC1234567890abcdef",
+  "FromCountry": "US",
+  "ToCountry": "US",
+  "MessageStatus": "received",
+  "NumMedia": "0",
+  "SmsStatus": "received"
+}

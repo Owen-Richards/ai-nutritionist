@@ -1,0 +1,72 @@
+site_name: AI Nutritionist Assistant
+site_description: Serverless AI Nutritionist Bot Documentation
+site_author: Owen Richards
+site_url: https://Owen-Richards.github.io/ai-nutritionist
+
+repo_name: Owen-Richards/ai-nutritionist
+repo_url: https://github.com/Owen-Richards/ai-nutritionist
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: green
+      accent: light green
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      primary: green
+      accent: light green
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - toc.integrate
+    - search.highlight
+    - content.code.annotate
+
+plugins:
+  - search
+  - mermaid2
+
+markdown_extensions:
+  - pymdownx.highlight
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+  - pymdownx.tabbed:
+      alternate_style: true
+  - admonition
+  - pymdownx.details
+  - attr_list
+  - md_in_html
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Quick Start: getting-started/quick-start.md
+    - Installation: getting-started/installation.md
+    - Configuration: getting-started/configuration.md
+  - User Guide:
+    - Using the Bot: user-guide/using-bot.md
+    - Commands: user-guide/commands.md
+    - Meal Planning: user-guide/meal-planning.md
+    - Privacy: user-guide/privacy.md
+  - Developer Guide:
+    - Architecture: developer/architecture.md
+    - API Reference: developer/api-reference.md
+    - Local Development: developer/local-development.md
+    - Testing: developer/testing.md
+    - Deployment: developer/deployment.md
+  - Operations:
+    - Monitoring: operations/monitoring.md
+    - Troubleshooting: operations/troubleshooting.md
+    - Performance: operations/performance.md
+    - Security: operations/security.md
+  - Contributing: contributing.md

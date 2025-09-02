@@ -1,0 +1,65 @@
+[
+  {
+    "name": "Oatmeal with banana and honey",
+    "category": "breakfast",
+    "dietary_tags": ["vegetarian", "gluten-free-option"],
+    "prep_time": 5,
+    "cost_per_serving": 1.25,
+    "calories": 350,
+    "ingredients": [
+      "1 cup rolled oats",
+      "1 medium banana",
+      "1 tbsp honey", 
+      "1 cup milk or plant milk",
+      "Pinch of cinnamon"
+    ],
+    "instructions": [
+      "Cook oats according to package directions",
+      "Slice banana and stir in",
+      "Drizzle with honey and sprinkle cinnamon"
+    ]
+  },
+  {
+    "name": "Chickpea curry with rice",
+    "category": "dinner",
+    "dietary_tags": ["vegan", "gluten-free"],
+    "prep_time": 25,
+    "cost_per_serving": 2.75,
+    "calories": 450,
+    "ingredients": [
+      "1 can chickpeas",
+      "1 can diced tomatoes",
+      "1 onion",
+      "2 cloves garlic",
+      "1 tsp curry powder",
+      "1 cup basmati rice"
+    ],
+    "instructions": [
+      "Sauté onion and garlic until fragrant",
+      "Add curry powder and cook 1 minute",
+      "Add tomatoes and chickpeas, simmer 15 minutes",
+      "Serve over cooked rice"
+    ]
+  },
+  {
+    "name": "Mediterranean wrap",
+    "category": "lunch",
+    "dietary_tags": ["vegetarian"],
+    "prep_time": 10,
+    "cost_per_serving": 3.00,
+    "calories": 420,
+    "ingredients": [
+      "1 large tortilla",
+      "2 tbsp hummus",
+      "1/4 cup feta cheese",
+      "1/2 cucumber, diced",
+      "1/4 cup olives",
+      "2 cups mixed greens"
+    ],
+    "instructions": [
+      "Spread hummus on tortilla",
+      "Add vegetables and feta",
+      "Roll up tightly and slice in half"
+    ]
+  }
+]
