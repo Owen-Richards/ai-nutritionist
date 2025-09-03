@@ -169,7 +169,7 @@ ai-nutritionalist/
 │       ├── ai_service.py
 │       ├── user_service.py
 │       ├── meal_plan_service.py
-│       └── twilio_service.py
+│       └── aws_sms_service.py
 ├── tests/                  # Unit and integration tests
 ├── requirements.txt        # Python dependencies
 └── README.md              # This file

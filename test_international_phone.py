@@ -10,12 +10,12 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 src_dir = os.path.join(current_dir, 'src')
 sys.path.insert(0, src_dir)
 
-from services.twilio_service import TwilioService
+from services.aws_sms_service import AWSMessagingService
 
 def test_international_phones():
     """Test international phone number validation and formatting"""
     
-    service = TwilioService()
+    service = AWSMessagingService()
     
     print("🌍 Testing International Phone Number Support")
     print("=" * 50)

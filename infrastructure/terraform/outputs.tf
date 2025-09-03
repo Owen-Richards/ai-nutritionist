@@ -139,6 +139,32 @@ output "sns_topic_arn" {
   value       = var.enable_sns_alerts ? aws_sns_topic.alerts[0].arn : null
 }
 
+# AWS End User Messaging SMS Outputs
+output "sms_phone_number" {
+  description = "AWS SMS phone number for the AI nutritionist"
+  value       = var.enable_aws_sms ? aws_pinpoint_sms_voice_v2_phone_number.ai_nutritionist_number[0].phone_number : null
+}
+
+output "sms_pool_id" {
+  description = "AWS SMS phone pool ID"
+  value       = var.enable_aws_sms ? aws_pinpoint_sms_voice_v2_phone_pool.ai_nutritionist_pool[0].pool_id : null
+}
+
+output "sms_configuration_set" {
+  description = "AWS SMS configuration set name"
+  value       = var.enable_aws_sms ? aws_pinpoint_sms_voice_v2_configuration_set.ai_nutritionist_config[0].name : null
+}
+
+output "inbound_sms_queue_url" {
+  description = "SQS queue URL for inbound SMS messages"
+  value       = var.enable_aws_sms ? aws_sqs_queue.inbound_sms[0].url : null
+}
+
+output "inbound_sms_processor_function" {
+  description = "Lambda function ARN for processing inbound SMS"
+  value       = var.enable_aws_sms ? aws_lambda_function.inbound_sms_processor[0].arn : null
+}
+
 # Security Outputs
 output "waf_web_acl_arn" {
   description = "WAF Web ACL ARN for API Gateway"

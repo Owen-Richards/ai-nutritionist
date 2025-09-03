@@ -381,7 +381,7 @@ ai-nutritionalist/
 │       └── services/            # Business logic services
 │           ├── ai_service.py         # Bedrock AI with caching
 │           ├── subscription_service.py # Stripe integration
-│           ├── twilio_service.py     # WhatsApp messaging
+│           ├── aws_sms_service.py    # AWS End User Messaging (SMS & WhatsApp)
 │           ├── meal_plan_service.py  # Nutrition logic
 │           └── user_service.py       # User management
 │

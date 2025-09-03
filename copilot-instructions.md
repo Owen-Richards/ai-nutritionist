@@ -24,7 +24,7 @@ This is a serverless AI-powered WhatsApp/SMS nutritionist bot built with AWS Lam
 - `src/services/ai_service.py` - AWS Bedrock integration for AI responses
 - `src/services/user_service.py` - DynamoDB user profile management
 - `src/services/meal_plan_service.py` - Meal planning orchestration
-- `src/services/twilio_service.py` - Twilio API wrapper
+- `src/services/aws_sms_service.py` - AWS End User Messaging API wrapper (replaces Twilio)
 
 ### Configuration & Data
 - `src/data/sample-twilio-webhook.json` - Example webhook payload for testing

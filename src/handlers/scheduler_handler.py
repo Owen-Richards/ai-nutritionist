@@ -14,7 +14,7 @@ import boto3
 from services.ai_service import AIService
 from services.user_service import UserService
 from services.meal_plan_service import MealPlanService
-from services.twilio_service import TwilioService
+from services.aws_sms_service import AWSMessagingService
 
 # Configure logging
 logger = logging.getLogger()
@@ -27,7 +27,7 @@ dynamodb = boto3.resource('dynamodb')
 user_service = UserService(dynamodb)
 ai_service = AIService()
 meal_plan_service = MealPlanService(dynamodb, ai_service)
-twilio_service = TwilioService()
+messaging_service = AWSMessagingService()
 
 # Set up service dependencies
 meal_plan_service.set_user_service(user_service)
@@ -115,12 +115,14 @@ def send_meal_plan_to_user(user_profile: Dict[str, Any], meal_plan: Dict[str, An
         # Format meal plan message
         message = format_weekly_meal_plan_message(meal_plan)
         
-        # Send via WhatsApp first, fallback to SMS
-        success = twilio_service.send_whatsapp_message(phone_number, message)
+        # Send via WhatsApp first, fallback to SMS using AWS Messaging Service
+        whatsapp_result = messaging_service.send_whatsapp_message(phone_number, message)
+        success = whatsapp_result.get('success', False)
         
         if not success:
-            # Fallback to SMS
-            success = twilio_service.send_sms(phone_number, message)
+            # Fallback to SMS using AWS SMS
+            sms_result = messaging_service.send_sms(phone_number, message)
+            success = sms_result.get('success', False)
         
         return success
         

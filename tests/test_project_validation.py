@@ -74,7 +74,8 @@ def test_requirements_file():
     
     content = requirements_file.read_text()
     assert "boto3" in content
-    assert "twilio" in content
+    # Migrated from Twilio to AWS End User Messaging
+    assert "stripe" in content  # For payments
     assert "pytest" in content
 
 
@@ -109,7 +110,7 @@ def test_python_modules_import():
         import services.ai_service
         import services.user_service
         import services.meal_plan_service
-        import services.twilio_service
+        import services.aws_sms_service
         # Basic syntax validation passed
         assert True
     except ImportError as e:

@@ -19,7 +19,7 @@ from botocore.exceptions import ClientError
 from services.ai_service import AIService
 from services.user_service import UserService
 from services.meal_plan_service import MealPlanService
-from services.twilio_service import TwilioService
+from services.aws_sms_service import AWSMessagingService
 from services.subscription_service import get_subscription_service
 
 # Configure logging
@@ -34,7 +34,7 @@ ssm = boto3.client('ssm')
 user_service = UserService(dynamodb)
 ai_service = AIService()
 meal_plan_service = MealPlanService(dynamodb, ai_service)
-twilio_service = TwilioService()
+messaging_service = AWSMessagingService()
 subscription_service = get_subscription_service()
 
 

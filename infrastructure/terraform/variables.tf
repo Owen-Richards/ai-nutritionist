@@ -47,6 +47,116 @@ variable "enable_family_sharing" {
   default     = true
 }
 
+# AWS End User Messaging SMS Configuration
+variable "enable_aws_sms" {
+  description = "Enable AWS End User Messaging SMS instead of Twilio"
+  type        = bool
+  default     = true
+}
+
+variable "sms_phone_country" {
+  description = "Country code for SMS phone number (e.g., US, UK, CA)"
+  type        = string
+  default     = "US"
+  validation {
+    condition     = contains(["US", "UK", "CA", "AU", "DE", "FR", "JP", "SG", "BR", "IN"], var.sms_phone_country)
+    error_message = "SMS phone country must be a supported country code."
+  }
+}
+
+variable "sms_message_type" {
+  description = "Type of SMS messages (TRANSACTIONAL or PROMOTIONAL)"
+  type        = string
+  default     = "TRANSACTIONAL"
+  validation {
+    condition     = contains(["TRANSACTIONAL", "PROMOTIONAL"], var.sms_message_type)
+    error_message = "SMS message type must be TRANSACTIONAL or PROMOTIONAL."
+  }
+}
+
+variable "sms_retention_days" {
+  description = "Number of days to retain SMS event logs"
+  type        = number
+  default     = 30
+  validation {
+    condition     = var.sms_retention_days >= 1 && var.sms_retention_days <= 365
+    error_message = "SMS retention days must be between 1 and 365."
+  }
+}
+
+variable "enable_monitoring" {
+  description = "Enable CloudWatch monitoring and alarms"
+  type        = bool
+  default     = true
+}
+
+# Spam Protection and Cost Control Variables
+variable "max_messages_per_hour" {
+  description = "Maximum SMS messages per phone number per hour"
+  type        = number
+  default     = 10
+  validation {
+    condition     = var.max_messages_per_hour >= 1 && var.max_messages_per_hour <= 100
+    error_message = "Max messages per hour must be between 1 and 100."
+  }
+}
+
+variable "max_messages_per_day" {
+  description = "Maximum SMS messages per phone number per day"
+  type        = number
+  default     = 50
+  validation {
+    condition     = var.max_messages_per_day >= 1 && var.max_messages_per_day <= 500
+    error_message = "Max messages per day must be between 1 and 500."
+  }
+}
+
+variable "daily_cost_limit" {
+  description = "Daily cost limit for SMS services in USD"
+  type        = number
+  default     = 50.0
+  validation {
+    condition     = var.daily_cost_limit >= 1.0 && var.daily_cost_limit <= 1000.0
+    error_message = "Daily cost limit must be between $1.00 and $1000.00."
+  }
+}
+
+variable "enable_waf_protection" {
+  description = "Enable WAF protection for API endpoints"
+  type        = bool
+  default     = true
+}
+
+variable "waf_rate_limit" {
+  description = "WAF rate limit per IP address (requests per 5 minutes)"
+  type        = number
+  default     = 2000
+  validation {
+    condition     = var.waf_rate_limit >= 100 && var.waf_rate_limit <= 20000
+    error_message = "WAF rate limit must be between 100 and 20000."
+  }
+}
+
+variable "blocked_countries" {
+  description = "List of country codes to block (e.g., ['CN', 'RU'])"
+  type        = list(string)
+  default     = []
+  validation {
+    condition     = length(var.blocked_countries) <= 20
+    error_message = "Cannot block more than 20 countries."
+  }
+}
+
+variable "spam_detection_sensitivity" {
+  description = "Spam detection sensitivity level (low, medium, high)"
+  type        = string
+  default     = "medium"
+  validation {
+    condition     = contains(["low", "medium", "high"], var.spam_detection_sensitivity)
+    error_message = "Spam detection sensitivity must be low, medium, or high."
+  }
+}
+
 variable "gdpr_compliance_enabled" {
   description = "Enable GDPR compliance features"
   type        = bool

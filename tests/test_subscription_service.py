@@ -6,12 +6,12 @@ import pytest
 from unittest.mock import Mock, patch
 from datetime import datetime, timedelta
 import boto3
-from moto import mock_dynamodb2 as mock_dynamodb
+from moto import mock_aws
 
 from src.services.subscription_service import SubscriptionService, get_subscription_service
 
 
-@mock_dynamodb
+@mock_aws
 class TestSubscriptionService:
     """Test subscription management functionality"""
     
