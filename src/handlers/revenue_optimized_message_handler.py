@@ -6,6 +6,7 @@ Handles messages while maximizing revenue through grocery affiliates, profit enf
 import json
 import logging
 import os
+import time
 from typing import Dict, Any, Optional
 from datetime import datetime
 import boto3
@@ -20,11 +21,17 @@ from services.guaranteed_profit_service import ProfitEnforcementService
 from services.brand_endorsement_service import BrandEndorsementService
 from services.premium_features_service import PremiumFeaturesService
 
+# Import improvement services
+from services.performance_monitoring_service import PerformanceMonitoringService
+from services.advanced_caching_service import AdvancedCachingService
+from services.error_recovery_service import ErrorRecoveryService
+from services.enhanced_user_experience_service import EnhancedUserExperienceService
+
 logger = logging.getLogger(__name__)
 
 
 class RevenueOptimizedMessageHandler:
-    """Message handler optimized for maximum revenue generation"""
+    """Message handler optimized for maximum revenue generation with advanced improvements"""
     
     def __init__(self):
         # Initialize AWS clients
@@ -41,37 +48,103 @@ class RevenueOptimizedMessageHandler:
         self.profit_service = ProfitEnforcementService()
         self.brand_service = BrandEndorsementService()
         self.premium_service = PremiumFeaturesService()
+        
+        # Initialize improvement services
+        self.performance_service = PerformanceMonitoringService()
+        self.cache_service = AdvancedCachingService()
+        self.error_service = ErrorRecoveryService()
+        self.ux_service = EnhancedUserExperienceService()
     
     def handle_message(self, user_phone: str, message_text: str, 
                       context: Dict[str, Any] = None) -> Dict[str, Any]:
-        """Handle incoming message with revenue optimization"""
+        """Handle incoming message with revenue optimization and advanced improvements"""
+        return self.error_service.execute_with_recovery(
+            self._handle_message_internal, 
+            'handle_message', 
+            'general_response',
+            user_phone, 
+            message_text, 
+            context
+        )
+    
+    def _handle_message_internal(self, user_phone: str, message_text: str, 
+                               context: Dict[str, Any] = None) -> Dict[str, Any]:
+        """Internal message handling with performance monitoring"""
+        start_time = time.time()
+        
         try:
+            # Track user engagement
+            self.ux_service.track_user_engagement(user_phone, 'message_received', {
+                'message_length': len(message_text),
+                'context': context or {}
+            })
+            
+            # Check cache for similar responses first
+            cache_key = f"response:{user_phone}:{hash(message_text)}"
+            cached_response = self.cache_service.get_cached_data(cache_key, 'ai_response')
+            
+            if cached_response:
+                self.performance_service.track_api_performance(
+                    'handle_message', time.time() - start_time, True, 0.0, True
+                )
+                return cached_response
+            
+            # Get personalized response context
+            personalized_context = self.ux_service.get_personalized_response(
+                user_phone, message_text, context or {}
+            )
+            
             # Step 1: Check profit enforcement BEFORE processing
             interaction_cost = self._estimate_interaction_cost(message_text)
             profit_check = self.profit_service.enforce_profit_policy(user_phone, interaction_cost)
             
             if not profit_check.get('allow_interaction', True):
-                # Send payment required message
-                response_text = profit_check['upgrade_message']
-                return self._send_response(user_phone, response_text, {
+                # Send payment required message with personalized tone
+                response_text = self._personalize_upgrade_message(
+                    profit_check['upgrade_message'], personalized_context
+                )
+                response = self._send_response(user_phone, response_text, {
                     'type': 'payment_required',
-                    'payment_options': profit_check.get('payment_options', [])
+                    'payment_options': profit_check.get('payment_options', []),
+                    'personalization': personalized_context
                 })
+                
+                # Cache the response
+                self.cache_service.set_cached_data(cache_key, response, 'ai_response', 1)
+                return response
             
-            # Step 2: Process the message
+            # Step 2: Process the message with intelligent routing
+            response = None
+            
             if message_text.lower() in ['pay', 'payment', 'upgrade']:
-                return self._handle_payment_request(user_phone)
+                response = self._handle_payment_request(user_phone, personalized_context)
             
             elif message_text.lower() in ['grocery', 'groceries', 'shopping']:
-                return self._handle_grocery_request(user_phone, message_text)
+                response = self._handle_grocery_request(user_phone, message_text, personalized_context)
             
             elif 'meal plan' in message_text.lower():
-                return self._handle_meal_plan_request(user_phone, message_text, profit_check)
+                response = self._handle_meal_plan_request(user_phone, message_text, profit_check, personalized_context)
             
             else:
-                return self._handle_general_ai_chat(user_phone, message_text, profit_check)
+                response = self._handle_general_ai_chat(user_phone, message_text, profit_check, personalized_context)
+            
+            # Cache successful response
+            if response and response.get('success', True):
+                self.cache_service.set_cached_data(cache_key, response, 'ai_response', 6)  # 6 hour TTL
+            
+            # Track performance
+            self.performance_service.track_api_performance(
+                'handle_message', time.time() - start_time, True, interaction_cost, False
+            )
+            
+            return response
                 
         except Exception as e:
+            # Performance tracking for errors
+            self.performance_service.track_api_performance(
+                'handle_message', time.time() - start_time, False, interaction_cost, False
+            )
+            
             logger.error(f"Error handling message: {str(e)}")
             return self._send_error_response(user_phone, str(e))
     
@@ -391,6 +464,355 @@ class RevenueOptimizedMessageHandler:
             
         except Exception as e:
             logger.error(f"Error tracking AI interaction: {str(e)}")
+    
+    def _personalize_upgrade_message(self, base_message: str, 
+                                   personalized_context: Dict[str, Any]) -> str:
+        """Personalize upgrade message based on user context"""
+        try:
+            journey_stage = personalized_context.get('journey_stage', 'discovery')
+            personalization_score = personalized_context.get('personalization_score', 0.0)
+            
+            if journey_stage == 'discovery':
+                return f"🌟 {base_message} As a new user, you'll love our premium features!"
+            elif journey_stage == 'engagement':
+                return f"📈 {base_message} You're making great progress - unlock more with premium!"
+            elif personalization_score > 0.7:
+                return f"💪 {base_message} Based on your usage, premium will save you time and money!"
+            else:
+                return base_message
+                
+        except Exception as e:
+            logger.error(f"Error personalizing upgrade message: {e}")
+            return base_message
+    
+    def _handle_payment_request(self, user_phone: str, 
+                              personalized_context: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle payment and upgrade requests with personalization"""
+        try:
+            # Track user engagement
+            self.ux_service.track_user_engagement(user_phone, 'payment_request', {
+                'journey_stage': personalized_context.get('journey_stage'),
+                'personalization_score': personalized_context.get('personalization_score')
+            })
+            
+            # Get personalized payment options
+            payment_options = self.profit_service.get_payment_options(user_phone)
+            
+            # Customize message based on user journey
+            journey_stage = personalized_context.get('journey_stage', 'discovery')
+            
+            if journey_stage == 'discovery':
+                message = "🎯 Perfect timing! Let's get you started with premium features. Choose your plan:"
+            elif journey_stage == 'engagement':
+                message = "🚀 Ready to unlock everything? Here are your upgrade options:"
+            else:
+                message = "💎 Time to go premium! Select your preferred plan:"
+            
+            return self._send_response(user_phone, message, {
+                'type': 'payment_options',
+                'options': payment_options,
+                'personalization': personalized_context
+            })
+            
+        except Exception as e:
+            logger.error(f"Error handling payment request: {e}")
+            return self._send_error_response(user_phone, "Payment options temporarily unavailable")
+    
+    def _handle_grocery_request(self, user_phone: str, message_text: str,
+                              personalized_context: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle grocery requests with enhanced personalization"""
+        try:
+            # Track engagement
+            self.ux_service.track_user_engagement(user_phone, 'grocery_request', {
+                'message_text': message_text,
+                'personalization': personalized_context
+            })
+            
+            # Check cache for recent grocery requests
+            cache_key = f"grocery:{user_phone}:{hash(message_text)}"
+            cached_grocery = self.cache_service.get_cached_data(cache_key, 'grocery_prices')
+            
+            if cached_grocery:
+                return cached_grocery
+            
+            # Get personalized grocery recommendations
+            user_data = self.user_service.get_user(user_phone)
+            preferences = user_data.get('preferences', {})
+            
+            # Get smart recommendations
+            recommendations = self.ux_service.get_smart_recommendations(
+                user_phone, 'grocery_shopping'
+            )
+            
+            # Generate grocery list with affiliate opportunities
+            grocery_result = self.grocery_service.generate_smart_grocery_list(
+                user_phone, preferences, recommendations.get('meal_suggestions', [])
+            )
+            
+            if grocery_result.get('success'):
+                # Enhanced response with personalization
+                response_text = self._format_grocery_response(
+                    grocery_result, personalized_context
+                )
+                
+                response = self._send_response(user_phone, response_text, {
+                    'type': 'grocery_list',
+                    'affiliate_links': grocery_result.get('affiliate_links', []),
+                    'personalization': personalized_context
+                })
+                
+                # Cache the result
+                self.cache_service.set_cached_data(cache_key, response, 'grocery_prices', 4)
+                
+                return response
+            else:
+                return self._send_error_response(user_phone, "Unable to generate grocery list")
+                
+        except Exception as e:
+            logger.error(f"Error handling grocery request: {e}")
+            return self._send_error_response(user_phone, "Grocery service temporarily unavailable")
+    
+    def _handle_general_ai_chat(self, user_phone: str, message_text: str, 
+                              profit_check: Dict, personalized_context: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle general AI chat with enhanced personalization and cost optimization"""
+        try:
+            # Check cache for similar AI responses
+            cache_key = f"ai_chat:{hash(message_text)}:{personalized_context.get('journey_stage')}"
+            cached_response = self.cache_service.get_cached_data(cache_key, 'ai_response')
+            
+            if cached_response:
+                return cached_response
+            
+            # Track engagement
+            self.ux_service.track_user_engagement(user_phone, 'ai_chat', {
+                'message_length': len(message_text),
+                'journey_stage': personalized_context.get('journey_stage')
+            })
+            
+            # Generate AI response with personalized context
+            user_data = self.user_service.get_user(user_phone)
+            
+            # Use error recovery for AI service calls
+            ai_response = self.error_service.execute_with_recovery(
+                self.ai_service.generate_nutrition_response,
+                'ai_chat',
+                'ai_response',
+                message_text,
+                user_data.get('preferences', {}),
+                personalized_context
+            )
+            
+            if ai_response.get('success'):
+                # Enhance response with brand integrations and smart suggestions
+                enhanced_response = self._enhance_ai_response(
+                    ai_response, user_phone, personalized_context
+                )
+                
+                response = self._send_response(user_phone, enhanced_response['text'], {
+                    'type': 'ai_chat',
+                    'suggestions': enhanced_response.get('suggestions', []),
+                    'brand_integrations': enhanced_response.get('brand_integrations', []),
+                    'personalization': personalized_context
+                })
+                
+                # Cache successful AI responses
+                self.cache_service.set_cached_data(cache_key, response, 'ai_response', 6)
+                
+                return response
+            else:
+                return self._send_error_response(user_phone, "AI service temporarily unavailable")
+                
+        except Exception as e:
+            logger.error(f"Error handling general AI chat: {e}")
+            return self._send_error_response(user_phone, "Chat service temporarily unavailable")
+    
+    def _format_grocery_response(self, grocery_result: Dict, 
+                               personalized_context: Dict[str, Any]) -> str:
+        """Format grocery response with personalization"""
+        try:
+            base_response = grocery_result.get('message', '')
+            journey_stage = personalized_context.get('journey_stage', 'discovery')
+            
+            if journey_stage == 'discovery':
+                prefix = "🛒 Here's your personalized grocery list! "
+            elif journey_stage == 'engagement':
+                prefix = "📋 Your optimized shopping list is ready! "
+            else:
+                prefix = "🎯 Your premium grocery experience: "
+            
+            return f"{prefix}{base_response}"
+            
+        except Exception as e:
+            logger.error(f"Error formatting grocery response: {e}")
+            return grocery_result.get('message', 'Here is your grocery list')
+    
+    def _enhance_ai_response(self, ai_response: Dict, user_phone: str,
+                           personalized_context: Dict[str, Any]) -> Dict[str, Any]:
+        """Enhance AI response with brand integrations and smart suggestions"""
+        try:
+            base_text = ai_response.get('text', '')
+            
+            # Add brand integrations if appropriate
+            brand_integration = self.brand_service.get_contextual_brand_integration(
+                user_phone, ai_response.get('context', {})
+            )
+            
+            # Get smart follow-up suggestions
+            suggestions = self.ux_service.get_smart_recommendations(
+                user_phone, 'ai_chat_followup'
+            )
+            
+            enhanced_text = base_text
+            if brand_integration.get('success'):
+                enhanced_text += f"\n\n💡 {brand_integration.get('message', '')}"
+            
+            return {
+                'text': enhanced_text,
+                'suggestions': suggestions.get('feature_suggestions', []),
+                'brand_integrations': [brand_integration] if brand_integration.get('success') else [],
+                'personalization_score': personalized_context.get('personalization_score', 0.0)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error enhancing AI response: {e}")
+            return {'text': ai_response.get('text', ''), 'suggestions': [], 'brand_integrations': []}
+    
+    def _handle_meal_plan_request(self, user_phone: str, message_text: str, 
+                                profit_check: Dict, personalized_context: Dict[str, Any]) -> Dict[str, Any]:
+        """Handle meal plan requests with enhanced personalization and caching"""
+        try:
+            # Check feature limits with personalized messaging
+            can_generate = self.premium_service.can_use_feature(user_phone, 'meal_plans')
+            
+            if not can_generate['allowed']:
+                personalized_upgrade = self._personalize_upgrade_message(
+                    can_generate['upgrade_message'], personalized_context
+                )
+                return self._send_response(user_phone, personalized_upgrade, {
+                    'type': 'feature_limit',
+                    'feature': 'meal_plans',
+                    'personalization': personalized_context
+                })
+            
+            # Check cache for recent meal plans
+            user_prefs_hash = hash(str(self.user_service.get_user(user_phone).get('preferences', {})))
+            cache_key = f"meal_plan:{user_phone}:{user_prefs_hash}"
+            cached_plan = self.cache_service.get_cached_data(cache_key, 'meal_plan')
+            
+            if cached_plan:
+                # Update cached response with current personalization
+                cached_plan['personalization'] = personalized_context
+                return cached_plan
+            
+            # Track engagement
+            self.ux_service.track_user_engagement(user_phone, 'meal_plan_request', {
+                'message_text': message_text,
+                'journey_stage': personalized_context.get('journey_stage')
+            })
+            
+            # Generate personalized meal plan
+            user_data = self.user_service.get_user(user_phone)
+            
+            # Use error recovery for meal plan generation
+            meal_plan = self.error_service.execute_with_recovery(
+                self.meal_plan_service.generate_meal_plan,
+                'meal_plan_generation',
+                'meal_plan',
+                user_phone,
+                user_data.get('preferences', {}),
+                personalized_context
+            )
+            
+            if not meal_plan.get('success', False):
+                return self._send_error_response(user_phone, "Failed to generate meal plan")
+            
+            # Enhance with brand integrations and grocery affiliates
+            enhanced_meal_plan = self.brand_service.integrate_brand_into_meal_plan(
+                user_phone, meal_plan
+            )
+            
+            # Generate grocery list with affiliate opportunities
+            grocery_result = self.grocery_service.generate_grocery_list_from_meal_plan(
+                user_phone, enhanced_meal_plan, curated_ordering=True
+            )
+            
+            # Format comprehensive response
+            response_text = self._format_meal_plan_response(
+                enhanced_meal_plan, grocery_result, user_phone, personalized_context
+            )
+            
+            response = self._send_response(user_phone, response_text, {
+                'type': 'meal_plan',
+                'meal_plan': enhanced_meal_plan,
+                'grocery_links': grocery_result.get('affiliate_links', []),
+                'personalization': personalized_context
+            })
+            
+            # Cache the meal plan
+            self.cache_service.set_cached_data(cache_key, response, 'meal_plan', 12)
+            
+            # Track revenue events
+            self._track_meal_plan_generation(user_phone, enhanced_meal_plan, grocery_result)
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error handling meal plan request: {e}")
+            return self._send_error_response(user_phone, "Meal plan service temporarily unavailable")
+    
+    def _format_meal_plan_response(self, meal_plan: Dict, grocery_result: Dict, 
+                                 user_phone: str, personalized_context: Dict[str, Any]) -> str:
+        """Format meal plan response with enhanced personalization"""
+        try:
+            journey_stage = personalized_context.get('journey_stage', 'discovery')
+            personalization_score = personalized_context.get('personalization_score', 0.0)
+            
+            # Personalized greeting
+            if journey_stage == 'discovery':
+                greeting = "🌟 Your first personalized meal plan is ready!"
+            elif journey_stage == 'engagement':
+                greeting = "🍽️ Another great meal plan, tailored just for you!"
+            elif personalization_score > 0.8:
+                greeting = "👨‍🍳 Your highly-personalized meal plan (we know you well!):"
+            else:
+                greeting = "🥗 Here's your custom meal plan:"
+            
+            base_response = meal_plan.get('formatted_response', '')
+            
+            # Add grocery integration if successful
+            grocery_integration = ""
+            if grocery_result.get('success'):
+                commission_info = grocery_result.get('commission_info', {})
+                if commission_info.get('total_savings', 0) > 0:
+                    grocery_integration = f"\n\n🛒 Smart Shopping: Save ${commission_info['total_savings']:.2f} with our partner stores!"
+            
+            # Add personalized tips based on user journey
+            personalized_tips = self._get_personalized_tips(user_phone, personalized_context)
+            
+            return f"{greeting}\n\n{base_response}{grocery_integration}\n\n{personalized_tips}"
+            
+        except Exception as e:
+            logger.error(f"Error formatting meal plan response: {e}")
+            return meal_plan.get('formatted_response', 'Here is your meal plan')
+    
+    def _get_personalized_tips(self, user_phone: str, 
+                             personalized_context: Dict[str, Any]) -> str:
+        """Get personalized tips based on user context"""
+        try:
+            journey_stage = personalized_context.get('journey_stage', 'discovery')
+            
+            tips = {
+                'discovery': "💡 Tip: Save this plan and track your progress! Reply 'grocery' for a shopping list.",
+                'engagement': "🎯 Pro tip: Premium users get unlimited meal plans and grocery delivery integration!",
+                'optimization': "⚡ Advanced tip: Use voice commands or set up weekly meal plan automation.",
+                'advocacy': "🌟 Share this with friends! They'll love our personalized nutrition approach."
+            }
+            
+            return tips.get(journey_stage, tips['discovery'])
+            
+        except Exception as e:
+            logger.error(f"Error getting personalized tips: {e}")
+            return "💡 Tip: Save this plan and reply with questions anytime!"
     
     def _send_response(self, user_phone: str, response_text: str, 
                      metadata: Dict = None) -> Dict[str, Any]:

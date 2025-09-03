@@ -15,7 +15,7 @@ from src.services.subscription_service import SubscriptionService, get_subscript
 class TestSubscriptionService:
     """Test subscription management functionality"""
     
-    def setup_method(self):
+    def setup_method(self, method):
         """Setup test fixtures"""
         # Create mock DynamoDB tables
         dynamodb = boto3.resource('dynamodb', region_name='us-east-1')
@@ -52,9 +52,12 @@ class TestSubscriptionService:
             'Parameter': {'Value': 'test_stripe_key'}
         }
         
-        with patch('boto3.client') as mock_client:
-            mock_client.return_value = self.mock_ssm
-            self.service = SubscriptionService()
+        # Patch boto3 calls in the SubscriptionService
+        with patch('src.services.subscription_service.boto3.resource') as mock_resource:
+            with patch('src.services.subscription_service.boto3.client') as mock_client:
+                mock_resource.return_value = dynamodb
+                mock_client.return_value = self.mock_ssm
+                self.service = SubscriptionService()
     
     def test_new_user_gets_free_tier(self):
         """Test that new users get free tier status"""
