@@ -1,0 +1,229 @@
+name: Production Deployment Pipeline
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+env:
+  AWS_REGION: us-east-1
+  PYTHON_VERSION: "3.13"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+    
+    - name: Set AWS region for tests
+      run: echo "AWS_DEFAULT_REGION=us-east-1" >> $GITHUB_ENV
+    
+    - name: Run tests
+      run: |
+        pytest tests/ -v --cov=src --cov-report=xml --cov-report=html
+    
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        flags: unittests
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install security tools
+      run: |
+        python -m pip install --upgrade pip
+        pip install safety bandit
+    
+    - name: Security scan with bandit
+      run: |
+        bandit -r src/ -f json -o bandit-report.json || true
+    
+    - name: Check for vulnerabilities with safety
+      run: |
+        safety check --json --output safety-report.json || true
+    
+    - name: Upload security reports
+      uses: actions/upload-artifact@v3
+      with:
+        name: security-reports
+        path: |
+          bandit-report.json
+          safety-report.json
+
+  build:
+    needs: [test, security]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install SAM CLI
+      uses: aws-actions/setup-sam@v2
+    
+    - name: Build SAM application
+      run: |
+        cd infrastructure
+        sam build
+    
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: sam-build
+        path: infrastructure/.aws-sam/
+
+  deploy-staging:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    environment: staging
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: sam-build
+        path: infrastructure/.aws-sam/
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: ${{ env.AWS_REGION }}
+    
+    - name: Deploy to staging
+      run: |
+        cd infrastructure
+        sam deploy \
+          --stack-name ai-nutritionist-staging \
+          --parameter-overrides Environment=staging \
+          --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+          --resolve-s3 \
+          --no-confirm-changeset
+    
+    - name: Run integration tests
+      run: |
+        pip install -r requirements.txt
+        pytest tests/test_integration.py -v
+      env:
+        ENVIRONMENT: staging
+        AWS_DEFAULT_REGION: ${{ env.AWS_REGION }}
+
+  deploy-production:
+    needs: [build, deploy-staging]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    environment: production
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Download build artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: sam-build
+        path: infrastructure/.aws-sam/
+    
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PROD }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PROD }}
+        aws-region: ${{ env.AWS_REGION }}
+    
+    - name: Deploy to production
+      run: |
+        cd infrastructure
+        sam deploy \
+          --stack-name ai-nutritionist-prod \
+          --parameter-overrides \
+            Environment=prod \
+            LogLevel=INFO \
+            EnableXRayTracing=true \
+            EnableVPC=true \
+            EnableWAF=true \
+          --capabilities CAPABILITY_IAM CAPABILITY_NAMED_IAM \
+          --resolve-s3 \
+          --no-confirm-changeset
+    
+    - name: Verify production deployment
+      run: |
+        # Get API Gateway URL
+        API_URL=$(aws cloudformation describe-stacks \
+          --stack-name ai-nutritionist-prod \
+          --query 'Stacks[0].Outputs[?OutputKey==`ApiGatewayUrl`].OutputValue' \
+          --output text)
+        
+        # Health check
+        curl -f "$API_URL/health" || exit 1
+        
+        echo "Production deployment verified successfully"
+    
+    - name: Notify deployment success
+      uses: 8398a7/action-slack@v3
+      with:
+        status: success
+        text: "🚀 AI Nutritionist v${{ github.ref_name }} deployed to production successfully!"
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      if: success()
+    
+    - name: Notify deployment failure
+      uses: 8398a7/action-slack@v3
+      with:
+        status: failure
+        text: "❌ AI Nutritionist v${{ github.ref_name }} production deployment failed!"
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      if: failure()
+
+  cleanup:
+    needs: [deploy-production]
+    runs-on: ubuntu-latest
+    if: always()
+    
+    steps:
+    - name: Clean up artifacts
+      uses: geekyeggo/delete-artifact@v2
+      with:
+        name: |
+          sam-build
+          security-reports
