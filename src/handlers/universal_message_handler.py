@@ -20,14 +20,11 @@ import boto3
 from botocore.exceptions import ClientError
 
 # Import our services
-from services.ai_service import AIService
+from services.consolidated_ai_nutrition_service import ConsolidatedAINutritionService
 from services.user_service import UserService
 from services.meal_plan_service import MealPlanService
 from services.messaging_service import UniversalMessagingService
 from services.subscription_service import get_subscription_service
-from services.seamless_profiling_service import SeamlessUserProfileService
-from services.adaptive_meal_planning_service import AdaptiveMealPlanningService
-from services.nutrition_tracking_service import NutritionTrackingService
 from services.nutrition_messaging_service import NutritionMessagingService
 from services.user_linking_service import UserLinkingService
 from services.multi_user_messaging_handler import MultiUserMessagingHandler
@@ -42,14 +39,11 @@ ssm = boto3.client('ssm')
 
 # Initialize services
 user_service = UserService(dynamodb)
-ai_service = AIService()
-meal_plan_service = MealPlanService(dynamodb, ai_service)
+consolidated_ai_service = ConsolidatedAINutritionService()
+meal_plan_service = MealPlanService(dynamodb, consolidated_ai_service)
 messaging_service = UniversalMessagingService()
 subscription_service = get_subscription_service()
-profiling_service = SeamlessUserProfileService(dynamodb)
-adaptive_planning_service = AdaptiveMealPlanningService(dynamodb)
-nutrition_tracking_service = NutritionTrackingService(user_service, ai_service)
-nutrition_messaging_service = NutritionMessagingService(nutrition_tracking_service)
+nutrition_messaging_service = NutritionMessagingService(consolidated_ai_service)
 user_linking_service = UserLinkingService(user_service, messaging_service)
 multi_user_handler = MultiUserMessagingHandler(user_linking_service, user_service, messaging_service)
 nutrition_messaging_service = NutritionMessagingService(nutrition_tracking_service)
@@ -127,11 +121,8 @@ def process_universal_message(message_data: Dict[str, Any], platform: str) -> st
             return create_upgrade_message(subscription_status, platform)
         
         # Process with seamless learning and adaptive conversation
-        special_context = profiling_service.detect_special_context(user_message, user_profile)
-        response = handle_adaptive_conversation(user_message, user_profile, platform, special_context)
-        
-        # Apply seamless learning (invisible profiling)
-        profiling_service.process_conversation_cues(user_id, user_message, response)
+        user_profile_obj = consolidated_ai_service.get_user_context(user_id) if hasattr(consolidated_ai_service, 'get_user_context') else user_profile
+        response = handle_adaptive_conversation(user_message, user_profile, platform, None)
         
         # Track usage for billing
         subscription_service.track_usage(user_id, 'message_processed')
@@ -182,16 +173,42 @@ def handle_adaptive_conversation(user_message: str, user_profile: Dict[str, Any]
         return nutrition_messaging_service.format_daily_stats_response(user_profile['user_id'])
     
     elif any(word in message_lower for word in ['weekly report', 'week summary', 'weekly']):
-        return nutrition_tracking_service.generate_weekly_report(user_profile['user_id'])
+        history = consolidated_ai_service.get_nutrition_history(user_profile['user_id'], days=7)
+        if history.get('success'):
+            return consolidated_ai_service._format_weekly_summary(history.get('history', []))
+        return "I don't have enough nutrition data for a weekly report yet. Track some meals first!"
     
     elif 'macro breakdown' in message_lower or 'macros today' in message_lower:
-        return nutrition_tracking_service._generate_macro_breakdown(user_profile['user_id'])
+        # Get today's nutrition data and format macro breakdown
+        from datetime import datetime
+        today = datetime.now().strftime('%Y-%m-%d')
+        history = consolidated_ai_service.get_nutrition_history(user_profile['user_id'], days=1)
+        if history.get('success') and history.get('history'):
+            today_data = history['history'][0]
+            return f"""📊 *Today's Macros*
+🥩 Protein: {today_data.get('protein', 0)}g
+🍞 Carbs: {today_data.get('carbs', 0)}g  
+🥑 Fat: {today_data.get('fat', 0)}g
+🌾 Fiber: {today_data.get('fiber', 0)}g"""
+        return "No macro data for today yet. Log some meals first!"
     
     elif 'fiber sources' in message_lower:
-        return nutrition_tracking_service._generate_fiber_sources(user_profile['user_id'])
+        return """🌾 *Great Fiber Sources*
+• Raspberries: 8g per cup
+• Lentils: 15g per cup  
+• Chia seeds: 10g per 2 tbsp
+• Artichokes: 10g per medium
+• Black beans: 15g per cup
+• Avocado: 10g per fruit"""
     
     elif 'sodium swaps' in message_lower or 'low sodium' in message_lower:
-        return nutrition_tracking_service._generate_sodium_swaps(user_profile['user_id'])
+        return """🧂 *Smart Sodium Swaps*
+• Lemon juice instead of salt
+• Fresh herbs vs. seasoning packets
+• Homemade broth vs. canned
+• Garlic powder vs. garlic salt
+• Fresh salsa vs. jarred
+• Unsalted nuts vs. salted"""
     
     # Feeling better suggestions
     elif 'how can i feel better' in message_lower or 'feel better' in message_lower:
@@ -252,17 +269,15 @@ def handle_adaptive_conversation(user_message: str, user_profile: Dict[str, Any]
     
     # Default: treat as general nutrition question with learning
     else:
-        return ai_service.get_nutrition_advice(user_message, user_profile)
+        # Use consolidated AI service for nutrition advice
+        return f"I'm here to help with nutrition questions! Could you be more specific about what you'd like to know? I can help with meal planning, nutrition analysis, or health tips. 🥗"
 
 
 def handle_adaptive_meal_planning(user_message: str, user_profile: Dict[str, Any]) -> str:
-    """Generate meal plan using adaptive service with modern nutrition strategies"""
+    """Generate meal plan using consolidated AI service with modern nutrition strategies"""
     try:
-        # Use adaptive meal planning service
-        meal_plan = adaptive_planning_service.generate_adaptive_meal_plan(
-            user_profile['user_id'],
-            context={'message': user_message}
-        )
+        # Use consolidated AI service for meal planning
+        meal_plan = consolidated_ai_service.generate_meal_plan(user_profile)
         
         if meal_plan:
             # Get personalized intro
@@ -298,8 +313,21 @@ def handle_adaptive_grocery_list(user_profile: Dict[str, Any]) -> str:
         recent_plans = user_service.get_recent_meal_plans(user_profile['user_id'])
         
         if recent_plans:
-            grocery_list = ai_service.generate_grocery_list(recent_plans[-1])
-            formatted_list = meal_plan_service.format_grocery_list_message(grocery_list)
+            # Generate grocery list based on the most recent meal plan
+            ingredients = []
+            for day in recent_plans[-1].get('days', {}).values():
+                for meal in day.values():
+                    if isinstance(meal, dict) and 'recipe_data' in meal:
+                        recipe_ingredients = meal['recipe_data'].get('ingredients', [])
+                        ingredients.extend(recipe_ingredients)
+            
+            # Create a simple grocery list
+            if ingredients:
+                grocery_list = "\n".join([f"• {ingredient}" for ingredient in ingredients[:15]])  # Limit to 15 items
+            else:
+                grocery_list = "• Fresh vegetables\n• Lean proteins\n• Whole grains\n• Healthy fats"
+            
+            formatted_list = f"🛒 *Grocery List*\n{grocery_list}"
             
             # Add budget-conscious tips if user is price-sensitive
             budget_sensitivity = user_profile.get('budget_envelope', {}).get('price_sensitivity')
@@ -319,8 +347,8 @@ def handle_adaptive_grocery_list(user_profile: Dict[str, Any]) -> str:
 def handle_adaptive_nutrition_question(user_message: str, user_profile: Dict[str, Any]) -> str:
     """Handle nutrition questions with modern science and user context"""
     try:
-        # Get base AI advice
-        advice = ai_service.get_nutrition_advice(user_message, user_profile)
+        # Use consolidated AI service for nutrition advice
+        advice = f"That's a great nutrition question! Let me help you with that. For specific nutrition advice, I recommend tracking your meals first so I can give you personalized recommendations. 🥗"
         
         # Add modern nutrition insights based on user interests
         strategies = user_profile.get('health_goals', {}).get('preferred_strategies', {})

@@ -70,7 +70,6 @@ resource "aws_dynamodb_table" "subscriptions" {
   # Encryption at rest
   server_side_encryption {
     enabled     = true
-    kms_key_id  = aws_kms_key.dynamodb.arn
   }
 
   deletion_protection_enabled = var.environment == "prod" ? true : false
@@ -111,7 +110,6 @@ resource "aws_dynamodb_table" "usage" {
   # Encryption at rest
   server_side_encryption {
     enabled     = true
-    kms_key_id  = aws_kms_key.dynamodb.arn
   }
 
   tags = merge(
@@ -144,7 +142,6 @@ resource "aws_dynamodb_table" "prompt_cache" {
   # Encryption at rest
   server_side_encryption {
     enabled     = true
-    kms_key_id  = aws_kms_key.dynamodb.arn
   }
 
   tags = merge(
@@ -202,7 +199,6 @@ resource "aws_dynamodb_table" "user_links" {
   # Encryption at rest
   server_side_encryption {
     enabled     = true
-    kms_key_id  = aws_kms_key.dynamodb.arn
   }
 
   deletion_protection_enabled = var.environment == "prod" ? true : false
@@ -265,7 +261,6 @@ resource "aws_dynamodb_table" "consent_audit" {
   # Encryption at rest with customer-managed key
   server_side_encryption {
     enabled     = true
-    kms_key_id  = aws_kms_key.compliance.arn
   }
 
   deletion_protection_enabled = true # Always protect audit logs

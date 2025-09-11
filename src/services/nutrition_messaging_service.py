@@ -3,6 +3,7 @@ Enhanced Messaging Service with Nutrition Tracking UX
 
 Battle-tested messaging patterns for nutrition power users with
 daily/weekly facts, feeling checks, and adaptive nudging.
+Enhanced with multi-goal support and custom goal handling.
 """
 
 import logging
@@ -16,10 +17,12 @@ class NutritionMessagingService:
     """
     Enhanced messaging service with nutrition-specific UX patterns.
     Provides battle-tested copy for daily nudges, recaps, and feeling checks.
+    Enhanced with multi-goal support and intelligent goal handling.
     """
     
-    def __init__(self, nutrition_tracking_service):
+    def __init__(self, nutrition_tracking_service, multi_goal_service=None):
         self.nutrition_tracking = nutrition_tracking_service
+        self.multi_goal_service = multi_goal_service
         
         # Template snack buttons for quick tracking
         self.snack_templates = {
@@ -452,3 +455,271 @@ Have fun entertaining! I'll help you reset smoothly after. 🥂"""
     def get_privacy_footer(self) -> str:
         """Standard privacy and safety footer"""
         return "\n\n*General wellness guidance, not medical advice.*"
+    
+    # ===== MULTI-GOAL CONVERSATION METHODS =====
+    
+    def handle_goal_input(self, user_id: str, message: str) -> Dict[str, Any]:
+        """Handle user input about nutrition goals with multi-goal support"""
+        try:
+            if not self.multi_goal_service:
+                return {"success": False, "error": "Multi-goal service not available"}
+            
+            # Parse for multiple goals in a single message
+            goals = self._parse_multiple_goals(message)
+            
+            if not goals:
+                # Try to handle as unknown/custom goal
+                return self.multi_goal_service.handle_unknown_goal(user_id, message)
+            
+            results = []
+            total_success = True
+            
+            # Add each parsed goal
+            for goal_text in goals:
+                result = self.multi_goal_service.add_user_goal(user_id, goal_text)
+                results.append(result)
+                if not result.get('success', False):
+                    total_success = False
+            
+            # Generate combined response
+            if total_success and len(goals) > 1:
+                response = self._generate_multi_goal_acknowledgment(goals, results)
+            elif total_success and len(goals) == 1:
+                response = results[0].get('acknowledgment', 'Goal added successfully!')
+            else:
+                response = "I had trouble understanding some of your goals. Can you clarify?"
+            
+            return {
+                "success": total_success,
+                "message": response,
+                "goals_added": len([r for r in results if r.get('success')]),
+                "results": results
+            }
+            
+        except Exception as e:
+            logger.error(f"Error handling goal input for user {user_id}: {str(e)}")
+            return {"success": False, "error": "Failed to process goals"}
+    
+    def handle_goal_prioritization(self, user_id: str, message: str) -> Dict[str, Any]:
+        """Handle user input about goal prioritization"""
+        try:
+            if not self.multi_goal_service:
+                return {"success": False, "error": "Multi-goal service not available"}
+            
+            # Parse priority preferences from message
+            priority_updates = self._parse_priority_preferences(message)
+            
+            if not priority_updates:
+                return {
+                    "success": False,
+                    "message": "I didn't understand your priority preferences. Try saying something like 'budget is more important than muscle gain'"
+                }
+            
+            # Update priorities
+            result = self.multi_goal_service.update_goal_priorities(user_id, priority_updates)
+            
+            if result.get('success'):
+                response = self._generate_priority_confirmation(priority_updates)
+                return {"success": True, "message": response}
+            else:
+                return {"success": False, "message": "Failed to update goal priorities"}
+                
+        except Exception as e:
+            logger.error(f"Error handling goal prioritization for user {user_id}: {str(e)}")
+            return {"success": False, "error": "Failed to update priorities"}
+    
+    def generate_multi_goal_meal_plan_intro(self, user_id: str, meal_plan_result) -> str:
+        """Generate introduction for multi-goal meal plans with trade-off explanations"""
+        try:
+            if not self.multi_goal_service:
+                return "Here's your personalized meal plan!"
+            
+            # Get user goals for context
+            user_profile = self.multi_goal_service.user_service.get_user_profile(user_id)
+            goals = user_profile.get('goals', []) if user_profile else []
+            
+            if not goals:
+                return "Here's a balanced meal plan to get you started! 🥗"
+            
+            # Create introduction based on goals and results
+            intro_parts = []
+            
+            # Goal acknowledgment
+            goal_names = []
+            for goal in goals:
+                if goal['goal_type'] == 'custom':
+                    goal_names.append(goal.get('label', 'custom goal'))
+                else:
+                    goal_def = self.multi_goal_service.goal_definitions.get(goal['goal_type'], {})
+                    goal_names.append(goal_def.get('name', goal['goal_type']).lower())
+            
+            if len(goal_names) == 1:
+                intro_parts.append(f"🎯 Here's your {goal_names[0]} meal plan!")
+            elif len(goal_names) == 2:
+                intro_parts.append(f"🎯 Here's your {goal_names[0]} + {goal_names[1]} meal plan!")
+            else:
+                formatted_goals = ", ".join(goal_names[:-1]) + f", and {goal_names[-1]}"
+                intro_parts.append(f"🎯 Here's your multi-goal plan balancing {formatted_goals}!")
+            
+            # Add cost summary if budget is a goal
+            if any(goal['goal_type'] == 'budget' for goal in goals):
+                if hasattr(meal_plan_result, 'cost_breakdown'):
+                    total_cost = meal_plan_result.cost_breakdown.get('total_cost', 0)
+                    daily_cost = meal_plan_result.cost_breakdown.get('daily_cost', 0)
+                    intro_parts.append(f"💰 Total cost: ${total_cost:.2f} (~${daily_cost:.2f}/day)")
+            
+            # Add trade-off explanations
+            if hasattr(meal_plan_result, 'trade_offs') and meal_plan_result.trade_offs:
+                intro_parts.append("\n💡 Smart trade-offs made:")
+                for trade_off in meal_plan_result.trade_offs[:2]:  # Limit to top 2
+                    intro_parts.append(f"• {trade_off}")
+            
+            # Add goal satisfaction summary
+            if hasattr(meal_plan_result, 'goal_satisfaction'):
+                high_satisfaction = [goal for goal, score in meal_plan_result.goal_satisfaction.items() if score > 0.8]
+                if high_satisfaction:
+                    intro_parts.append(f"\n✅ Strongly optimized for: {', '.join(high_satisfaction)}")
+            
+            return "\n".join(intro_parts)
+            
+        except Exception as e:
+            logger.error(f"Error generating multi-goal intro for user {user_id}: {str(e)}")
+            return "Here's your personalized meal plan!"
+    
+    def suggest_goal_prioritization(self, user_id: str) -> Optional[str]:
+        """Suggest goal prioritization when user has multiple goals"""
+        try:
+            if not self.multi_goal_service:
+                return None
+            
+            user_profile = self.multi_goal_service.user_service.get_user_profile(user_id)
+            goals = user_profile.get('goals', []) if user_profile else []
+            
+            if len(goals) <= 2:
+                return None  # No need for prioritization
+            
+            # Generate prioritization suggestion
+            goal_names = []
+            for goal in goals:
+                if goal['goal_type'] == 'custom':
+                    goal_names.append(goal.get('label', 'custom goal'))
+                else:
+                    goal_def = self.multi_goal_service.goal_definitions.get(goal['goal_type'], {})
+                    goal_names.append(goal_def.get('name', goal['goal_type']).lower())
+            
+            formatted_goals = ", ".join(goal_names)
+            
+            return f"""Since you have multiple goals ({formatted_goals}), which should I prioritize most strongly?
+            
+You can say something like:
+• "Budget is most important"
+• "Muscle gain first, then budget"
+• "All equally important"
+
+This helps me make better trade-offs in your meal plans! 🎯"""
+            
+        except Exception as e:
+            logger.error(f"Error suggesting goal prioritization for user {user_id}: {str(e)}")
+            return None
+    
+    def _parse_multiple_goals(self, message: str) -> List[str]:
+        """Parse multiple goals from a single message"""
+        message_lower = message.lower()
+        
+        # Common multi-goal patterns
+        goal_patterns = [
+            r'want to (.+?) and (.+?)(?:\s|$)',
+            r'(.+?),\s*(.+?),?\s*and (.+)',
+            r'(.+?)\s*\+\s*(.+)',
+            r'both (.+?) and (.+)',
+            r'(.+?) but also (.+)'
+        ]
+        
+        for pattern in goal_patterns:
+            match = re.search(pattern, message_lower)
+            if match:
+                goals = [goal.strip() for goal in match.groups()]
+                return [goal for goal in goals if goal]  # Remove empty strings
+        
+        # Single goal fallback
+        goal_keywords = [
+            'budget', 'cheap', 'save money', 'affordable',
+            'muscle', 'protein', 'build muscle', 'gain muscle',
+            'lose weight', 'weight loss', 'diet',
+            'gut health', 'digestion', 'gut',
+            'energy', 'fatigue', 'tired',
+            'quick', 'fast', 'easy', 'simple'
+        ]
+        
+        for keyword in goal_keywords:
+            if keyword in message_lower:
+                return [keyword]
+        
+        return []
+    
+    def _generate_multi_goal_acknowledgment(self, goals: List[str], results: List[Dict]) -> str:
+        """Generate acknowledgment for multiple goals"""
+        successful_goals = [goals[i] for i, result in enumerate(results) if result.get('success')]
+        
+        if len(successful_goals) == 2:
+            return f"Got it 👍 {successful_goals[0]} + {successful_goals[1]}. I'll balance both in your meal plans!"
+        else:
+            formatted_goals = ", ".join(successful_goals[:-1]) + f", and {successful_goals[-1]}"
+            return f"Perfect! I'll optimize for {formatted_goals}. Since you have multiple goals, which should I prioritize most strongly?"
+    
+    def _parse_priority_preferences(self, message: str) -> List[Dict[str, Any]]:
+        """Parse priority preferences from user message"""
+        message_lower = message.lower()
+        
+        # Priority patterns
+        priority_patterns = [
+            r'(.+?)\s+(?:is\s+)?(?:more\s+important|priority|first)',
+            r'prioritize\s+(.+?)(?:\s|$)',
+            r'(.+?)\s+over\s+(.+)',
+            r'focus\s+on\s+(.+?)(?:\s|$)'
+        ]
+        
+        updates = []
+        for pattern in priority_patterns:
+            match = re.search(pattern, message_lower)
+            if match:
+                high_priority_goal = match.group(1).strip()
+                
+                # Map to goal type (simplified)
+                goal_mapping = {
+                    'budget': 'budget',
+                    'muscle': 'muscle_gain',
+                    'protein': 'muscle_gain',
+                    'weight': 'weight_loss',
+                    'energy': 'energy',
+                    'quick': 'quick_meals',
+                    'gut': 'gut_health'
+                }
+                
+                for keyword, goal_type in goal_mapping.items():
+                    if keyword in high_priority_goal:
+                        updates.append({
+                            'goal_type': goal_type,
+                            'priority': 4  # High priority
+                        })
+                        break
+        
+        return updates
+    
+    def _generate_priority_confirmation(self, priority_updates: List[Dict]) -> str:
+        """Generate confirmation message for priority updates"""
+        if not priority_updates:
+            return "Priority updated!"
+        
+        high_priority_goals = []
+        for update in priority_updates:
+            goal_type = update['goal_type']
+            if hasattr(self.multi_goal_service, 'goal_definitions') and goal_type in self.multi_goal_service.goal_definitions:
+                goal_name = self.multi_goal_service.goal_definitions[goal_type]['name']
+                high_priority_goals.append(goal_name.lower())
+        
+        if len(high_priority_goals) == 1:
+            return f"Got it! I'll prioritize {high_priority_goals[0]} in your meal plans. 🎯"
+        else:
+            formatted_goals = ", ".join(high_priority_goals)
+            return f"Perfect! I'll give top priority to: {formatted_goals} 🎯"

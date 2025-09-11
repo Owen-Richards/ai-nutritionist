@@ -45,6 +45,7 @@ resource "aws_dynamodb_table" "user_reputation" {
   global_secondary_index {
     name     = "LastActivityIndex"
     hash_key = "last_activity"
+    projection_type = "ALL"
   }
   
   ttl {
@@ -79,6 +80,7 @@ resource "aws_dynamodb_table" "blocked_numbers" {
   global_secondary_index {
     name     = "BlockReasonIndex"
     hash_key = "block_reason"
+    projection_type = "ALL"
   }
   
   tags = {

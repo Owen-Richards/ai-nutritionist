@@ -278,13 +278,14 @@ resource "aws_budgets_budget" "monthly_cost" {
   limit_amount = var.monthly_budget_limit
   limit_unit   = "USD"
   time_unit    = "MONTHLY"
-  time_period_start = formatdate("YYYY-MM-01_00:00", timestamp())
+  time_period_start = "2025-09-01_00:00"
 
-  cost_filters = {
-    Service = [
+  cost_filter {
+    name   = "Service"
+    values = [
       "Amazon DynamoDB",
       "AWS Lambda",
-      "Amazon API Gateway",
+      "Amazon API Gateway", 
       "Amazon CloudFront",
       "Amazon S3",
       "Amazon Bedrock"

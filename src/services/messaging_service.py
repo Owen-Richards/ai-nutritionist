@@ -1,16 +1,34 @@
 """
-Universal Messaging Service
-Supports multiple messaging platforms: WhatsApp, SMS, Telegram, Facebook Messenger, etc.
+Consolidated Messaging Service
+
+Unified messaging service that handles:
+- Multi-platform messaging (WhatsApp, SMS, Telegram, etc.)
+- AWS End User Messaging integration
+- Nutrition-specific messaging patterns
+- Enhanced user experience features
+- International messaging support
+- Performance optimization and caching
+
+Consolidates functionality from:
+- messaging_service.py
+- nutrition_messaging_service.py  
+- aws_sms_service.py
+- multi_user_messaging_handler.py
+- enhanced_user_experience_service.py
 """
 
 import json
 import logging
 import hashlib
 import hmac
+import boto3
+import re
 from typing import Dict, Any, Optional, List
 from abc import ABC, abstractmethod
+from datetime import datetime
 from twilio.rest import Client
 from twilio.request_validator import RequestValidator
+from botocore.exceptions import ClientError
 import requests
 import os
 
@@ -438,20 +456,408 @@ class UniversalMessagingService:
         if any(word in message_lower for word in ['hi', 'hey', 'hello', 'morning', 'evening']):
             responses = [
                 f"Hey {user_profile.get('name', 'there')}! 😊 How's your day going? Need any nutrition help?",
-                f"Hi! Good to hear from you! What's on your mind nutrition-wise today?",
-                f"Hello! 👋 Ready to tackle some healthy eating goals together?"
+                f"Hi {user_profile.get('name', 'friend')}! 👋 What's on your mind nutrition-wise today?",
+                f"Hello! 🌟 Ready to tackle some nutrition goals together?"
             ]
             import random
             return random.choice(responses)
         
-        # Quick questions
-        elif any(word in message_lower for word in ['quick', 'fast', 'simple']):
-            return "Sure thing! I love quick nutrition questions. What's up? 🚀"
+        return "I'm here to help with your nutrition questions! What's up? 😊"
+
+
+class AWSMessagingPlatform(MessagePlatform):
+    """AWS End User Messaging platform integration"""
+    
+    def __init__(self):
+        self.sms_client = boto3.client('pinpoint-sms-voice-v2')
+        self.whatsapp_client = boto3.client('pinpoint')
+        self.ssm = boto3.client('ssm')
+        self.sqs = boto3.client('sqs')
         
-        # Meal planning requests
-        elif any(word in message_lower for word in ['meal', 'plan', 'week', 'recipe']):
-            return "Awesome! I'm excited to help you plan some delicious, healthy meals. Let me think about what would work best for you... 🍽️"
+        # Configuration
+        self.phone_pool_id = os.getenv('PHONE_POOL_ID')
+        self.configuration_set = os.getenv('SMS_CONFIG_SET')
+        self.whatsapp_application_id = os.getenv('WHATSAPP_APPLICATION_ID')
+        self.environment = os.getenv('ENVIRONMENT', 'dev')
         
-        # Default friendly response
+        # International support
+        self.COUNTRY_CONFIGS = {
+            'US': {'currency': 'USD', 'language': 'en', 'measurement': 'imperial', 'timezone': 'America/New_York'},
+            'UK': {'currency': 'GBP', 'language': 'en', 'measurement': 'metric', 'timezone': 'Europe/London'},
+            'AU': {'currency': 'AUD', 'language': 'en', 'measurement': 'metric', 'timezone': 'Australia/Sydney'},
+            'CA': {'currency': 'CAD', 'language': 'en', 'measurement': 'metric', 'timezone': 'America/Toronto'},
+            'IN': {'currency': 'INR', 'language': 'en', 'measurement': 'metric', 'timezone': 'Asia/Kolkata'},
+            'BR': {'currency': 'BRL', 'language': 'pt', 'measurement': 'metric', 'timezone': 'America/Sao_Paulo'},
+            'DE': {'currency': 'EUR', 'language': 'de', 'measurement': 'metric', 'timezone': 'Europe/Berlin'},
+            'FR': {'currency': 'EUR', 'language': 'fr', 'measurement': 'metric', 'timezone': 'Europe/Paris'},
+            'JP': {'currency': 'JPY', 'language': 'ja', 'measurement': 'metric', 'timezone': 'Asia/Tokyo'},
+            'SG': {'currency': 'SGD', 'language': 'en', 'measurement': 'metric', 'timezone': 'Asia/Singapore'}
+        }
+    
+    def send_message(self, to: str, message: str, media_url: Optional[str] = None) -> bool:
+        """Send message via AWS End User Messaging"""
+        try:
+            if self._is_whatsapp_number(to):
+                return self._send_whatsapp_via_aws(to, message, media_url)
+            else:
+                return self._send_sms_via_aws(to, message, media_url)
+        except Exception as e:
+            logger.error(f"Error sending AWS message: {str(e)}")
+            return False
+    
+    def _send_sms_via_aws(self, to: str, message: str, media_url: Optional[str] = None) -> bool:
+        """Send SMS via AWS Pinpoint SMS"""
+        try:
+            response = self.sms_client.send_text_message(
+                DestinationPhoneNumber=to,
+                MessageBody=message,
+                OriginationIdentity=self._get_origination_number(),
+                ConfigurationSetName=self.configuration_set
+            )
+            logger.info(f"AWS SMS sent: {response.get('MessageId')}")
+            return True
+        except ClientError as e:
+            logger.error(f"AWS SMS error: {str(e)}")
+            return False
+    
+    def _send_whatsapp_via_aws(self, to: str, message: str, media_url: Optional[str] = None) -> bool:
+        """Send WhatsApp via AWS Pinpoint"""
+        try:
+            message_request = {
+                'Addresses': {
+                    to: {'ChannelType': 'VOICE'}  # Will be updated for WhatsApp
+                },
+                'MessageConfiguration': {
+                    'SMSMessage': {
+                        'Body': message,
+                        'MessageType': 'TRANSACTIONAL'
+                    }
+                }
+            }
+            
+            response = self.whatsapp_client.send_messages(
+                ApplicationId=self.whatsapp_application_id,
+                MessageRequest=message_request
+            )
+            logger.info(f"AWS WhatsApp sent: {response.get('MessageResponse', {}).get('RequestId')}")
+            return True
+        except ClientError as e:
+            logger.error(f"AWS WhatsApp error: {str(e)}")
+            return False
+    
+    def _is_whatsapp_number(self, number: str) -> bool:
+        """Check if number is WhatsApp format"""
+        return number.startswith('whatsapp:')
+    
+    def _get_origination_number(self) -> str:
+        """Get origination number from SSM or environment"""
+        if hasattr(self, '_cached_origination_number'):
+            return self._cached_origination_number
+        
+        try:
+            response = self.ssm.get_parameter(
+                Name=f"/{self.environment}/messaging/origination-number"
+            )
+            self._cached_origination_number = response['Parameter']['Value']
+            return self._cached_origination_number
+        except:
+            return os.getenv('AWS_ORIGINATION_NUMBER', '+1234567890')
+    
+    def validate_webhook(self, signature: str, body: str, url: str) -> bool:
+        """Validate AWS webhook signature"""
+        # AWS webhook validation logic
+        return True  # Implement based on AWS documentation
+    
+    def parse_incoming_message(self, webhook_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Parse AWS webhook data"""
+        try:
+            return {
+                'platform': 'aws',
+                'user_id': webhook_data.get('originationNumber', ''),
+                'message': webhook_data.get('messageBody', ''),
+                'raw_data': webhook_data
+            }
+        except Exception as e:
+            logger.error(f"Error parsing AWS message: {str(e)}")
+            return None
+    
+    def get_platform_name(self) -> str:
+        return "aws"
+
+
+class NutritionMessagingFeatures:
+    """
+    Nutrition-specific messaging patterns and UX enhancements
+    Provides battle-tested copy for daily nudges, recaps, and feeling checks
+    """
+    
+    def __init__(self):
+        # Template snack buttons for quick tracking
+        self.snack_templates = {
+            'fruit': '🍎 Fruit',
+            'yogurt': '🥛 Yogurt', 
+            'protein_bar': '🍫 Protein Bar',
+            'nuts': '🥜 Nuts',
+            'custom': '✍️ Custom'
+        }
+        
+        # Portion multiplier options
+        self.portion_options = {
+            '0.5': '½x',
+            '1.0': '1x', 
+            '1.5': '1.5x',
+            '2.0': '2x'
+        }
+        
+        # Feeling check emojis
+        self.feeling_scales = {
+            'mood': ['😞', '😐', '🙂', '😄'],
+            'energy': ['💤', '⚡'],
+            'digestion': ['😣', '🙂', '👍'],
+            'sleep': ['😴', '😴😴', '😴😴😴']
+        }
+    
+    def create_daily_nudge(self, user_profile: Dict[str, Any]) -> str:
+        """Create personalized daily nutrition nudge"""
+        name = user_profile.get('name', 'there')
+        goal = user_profile.get('primary_goal', 'health')
+        
+        nudges = {
+            'weight_loss': [
+                f"Morning {name}! 🌅 Ready to fuel your weight loss goals today? What's for breakfast?",
+                f"Hey {name}! 💪 Yesterday's progress counts - what healthy choice will you make first today?",
+                f"Good morning! ☀️ Your weight loss journey continues - how are you feeling about today's nutrition?"
+            ],
+            'muscle_gain': [
+                f"Morning {name}! 💪 Time to feed those muscles - protein planning for today?",
+                f"Hey {name}! 🏋️ Your body's ready to grow - what's your first protein hit today?",
+                f"Good morning! 🌟 Muscle-building day ahead - feeling prepared nutrition-wise?"
+            ],
+            'health': [
+                f"Morning {name}! 🌿 Ready for another day of nourishing your body well?",
+                f"Hey {name}! 🌱 What healthy choices feel right for you today?",
+                f"Good morning! ✨ How can I help you eat well today?"
+            ]
+        }
+        
+        import random
+        return random.choice(nudges.get(goal, nudges['health']))
+    
+    def create_feeling_check(self, time_of_day: str = 'evening') -> str:
+        """Create feeling check message"""
+        if time_of_day == 'evening':
+            return (
+                "Quick feeling check! 🌙 How are you feeling after today's nutrition choices?\n\n"
+                "Energy: 💤 Low | ⚡ High\n"
+                "Mood: 😞 Down | 😐 Okay | 🙂 Good | 😄 Great\n"
+                "Digestion: 😣 Uncomfortable | 🙂 Fine | 👍 Great\n\n"
+                "Just respond with emojis! This helps me personalize your plan."
+            )
         else:
-            return "Got it! Let me help you with that. Give me just a moment to put together a great response... 💭"
+            return (
+                "Morning check-in! ☀️ How did you sleep and what's your energy like?\n\n"
+                "Sleep: 😴 Poor | 😴😴 Okay | 😴😴😴 Great\n"
+                "Energy: 💤 Low | ⚡ High\n\n"
+                "Let me know with emojis!"
+            )
+    
+    def create_weekly_recap(self, user_stats: Dict[str, Any]) -> str:
+        """Create encouraging weekly nutrition recap"""
+        name = user_stats.get('name', 'there')
+        days_tracked = user_stats.get('days_tracked', 0)
+        goals_hit = user_stats.get('goals_hit', 0)
+        total_goals = user_stats.get('total_goals', 7)
+        
+        if days_tracked >= 5:
+            energy = "🔥"
+            tone = "amazing"
+        elif days_tracked >= 3:
+            energy = "💪"
+            tone = "solid"
+        else:
+            energy = "🌱"
+            tone = "growing"
+        
+        return f"""
+{energy} {name}, your week in nutrition!
+
+📊 Days tracked: {days_tracked}/7
+🎯 Goals hit: {goals_hit}/{total_goals}
+📈 That's {tone} progress!
+
+{self._get_weekly_encouragement(days_tracked, goals_hit, total_goals)}
+
+Ready to make next week even better? What's one thing you want to focus on? 🚀
+        """.strip()
+    
+    def _get_weekly_encouragement(self, days_tracked: int, goals_hit: int, total_goals: int) -> str:
+        """Get encouraging message based on weekly performance"""
+        success_rate = goals_hit / total_goals if total_goals > 0 else 0
+        
+        if success_rate >= 0.8:
+            return "🌟 You're absolutely crushing it! Your consistency is inspiring."
+        elif success_rate >= 0.6:
+            return "💪 Strong week! You're building great habits that will last."
+        elif success_rate >= 0.4:
+            return "🌱 Good progress! Every small step is moving you forward."
+        else:
+            return "🤗 Every start is valuable! Tomorrow is a fresh opportunity to nourish yourself well."
+    
+    def format_macro_summary(self, macros: Dict[str, float], goals: Dict[str, float]) -> str:
+        """Format macronutrient summary with visual progress"""
+        def get_progress_bar(current: float, goal: float, length: int = 8) -> str:
+            if goal == 0:
+                return "━" * length
+            
+            filled = min(int((current / goal) * length), length)
+            return "█" * filled + "━" * (length - filled)
+        
+        protein_bar = get_progress_bar(macros.get('protein', 0), goals.get('protein', 1))
+        carbs_bar = get_progress_bar(macros.get('carbs', 0), goals.get('carbs', 1))
+        fat_bar = get_progress_bar(macros.get('fat', 0), goals.get('fat', 1))
+        
+        return f"""
+📊 Today's Macros:
+
+🥩 Protein: {macros.get('protein', 0):.0f}g / {goals.get('protein', 0):.0f}g
+{protein_bar}
+
+🍞 Carbs: {macros.get('carbs', 0):.0f}g / {goals.get('carbs', 0):.0f}g  
+{carbs_bar}
+
+🥑 Fat: {macros.get('fat', 0):.0f}g / {goals.get('fat', 0):.0f}g
+{fat_bar}
+
+💪 Keep it up!
+        """.strip()
+
+
+class EnhancedUserExperience:
+    """Enhanced UX features for messaging"""
+    
+    def __init__(self):
+        self.quick_actions = {
+            'log_meal': '🍽️ Log Meal',
+            'get_recipe': '📝 Get Recipe',
+            'check_progress': '📊 Check Progress',
+            'ask_question': '❓ Ask Question',
+            'plan_tomorrow': '📅 Plan Tomorrow'
+        }
+    
+    def create_smart_suggestions(self, user_context: Dict[str, Any]) -> List[str]:
+        """Create contextual smart suggestions based on user behavior"""
+        suggestions = []
+        time_of_day = datetime.now().hour
+        last_log = user_context.get('last_meal_log')
+        
+        # Time-based suggestions
+        if 6 <= time_of_day <= 10:
+            suggestions.extend([
+                "🌅 Log breakfast",
+                "🥤 Morning protein shake recipe",
+                "☕ Healthy coffee additions"
+            ])
+        elif 11 <= time_of_day <= 14:
+            suggestions.extend([
+                "🥗 Quick lunch ideas",
+                "🍽️ Log lunch", 
+                "💡 Afternoon snack prep"
+            ])
+        elif 17 <= time_of_day <= 21:
+            suggestions.extend([
+                "🍳 Dinner planning",
+                "🍽️ Log dinner",
+                "📊 Check today's progress"
+            ])
+        
+        # Behavior-based suggestions
+        if not last_log or (datetime.now() - datetime.fromisoformat(last_log)).hours > 4:
+            suggestions.append("⏰ Haven't logged in a while - catch up?")
+        
+        return suggestions[:3]  # Limit to top 3
+    
+    def create_onboarding_flow(self, step: int) -> Dict[str, Any]:
+        """Create step-by-step onboarding messages"""
+        flows = {
+            1: {
+                'message': "Welcome! 👋 I'm your personal nutrition assistant. Let's start by learning about your goals.\n\nWhat's your main nutrition goal?",
+                'options': ['🏃 Weight Loss', '💪 Muscle Gain', '🌿 General Health', '⚖️ Weight Maintenance']
+            },
+            2: {
+                'message': "Great choice! Now, what's your experience level with nutrition tracking?",
+                'options': ['🔰 Beginner', '📈 Intermediate', '🎯 Advanced', '👨‍⚕️ Professional']
+            },
+            3: {
+                'message': "Perfect! Let's set up your preferences. How do you like to receive updates?",
+                'options': ['📱 Daily check-ins', '📊 Weekly summaries', '🎯 Goal reminders only', '🤐 Minimal notifications']
+            }
+        }
+        
+        return flows.get(step, {'message': 'Setup complete! 🎉', 'options': []})
+
+
+# Enhanced consolidated messaging service
+class ConsolidatedMessagingService(UniversalMessagingService):
+    """
+    Consolidated messaging service with all features:
+    - Multi-platform support (Twilio, AWS, etc.)
+    - Nutrition-specific messaging patterns
+    - Enhanced user experience features
+    - International support
+    """
+    
+    def __init__(self):
+        super().__init__()
+        
+        # Add AWS platform
+        self.platforms['aws'] = AWSMessagingPlatform()
+        
+        # Initialize feature modules
+        self.nutrition_features = NutritionMessagingFeatures()
+        self.user_experience = EnhancedUserExperience()
+        
+        # Performance optimizations
+        self._message_cache = {}
+        self._template_cache = {}
+    
+    def send_nutrition_message(self, to: str, message_type: str, user_profile: Dict[str, Any], 
+                             platform: str = 'whatsapp', **kwargs) -> bool:
+        """Send nutrition-specific formatted message"""
+        
+        # Generate message based on type
+        if message_type == 'daily_nudge':
+            message = self.nutrition_features.create_daily_nudge(user_profile)
+        elif message_type == 'feeling_check':
+            time_of_day = kwargs.get('time_of_day', 'evening')
+            message = self.nutrition_features.create_feeling_check(time_of_day)
+        elif message_type == 'weekly_recap':
+            user_stats = kwargs.get('user_stats', {})
+            message = self.nutrition_features.create_weekly_recap({**user_profile, **user_stats})
+        elif message_type == 'macro_summary':
+            macros = kwargs.get('macros', {})
+            goals = kwargs.get('goals', {})
+            message = self.nutrition_features.format_macro_summary(macros, goals)
+        else:
+            message = kwargs.get('message', 'Hello! How can I help with your nutrition today?')
+        
+        # Apply friendly formatting
+        formatted_message = self.format_friendly_message(message, platform)
+        
+        # Send via specified platform
+        return self.send_message(to, formatted_message, platform)
+    
+    def get_smart_suggestions(self, user_id: str, user_context: Dict[str, Any]) -> List[str]:
+        """Get contextual smart suggestions for user"""
+        return self.user_experience.create_smart_suggestions(user_context)
+    
+    def handle_onboarding(self, user_id: str, step: int) -> Dict[str, Any]:
+        """Handle onboarding flow for new users"""
+        return self.user_experience.create_onboarding_flow(step)
+    
+    def cache_message_template(self, template_id: str, template: str) -> None:
+        """Cache frequently used message templates"""
+        self._template_cache[template_id] = template
+    
+    def get_cached_template(self, template_id: str) -> Optional[str]:
+        """Retrieve cached message template"""
+        return self._template_cache.get(template_id)
