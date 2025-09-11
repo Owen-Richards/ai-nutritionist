@@ -1,640 +1,607 @@
 """
-Dietary Constraint Handler - Health conditions and dietary restrictions
-Consolidates: health_condition_service.py, dietary_restriction_service.py
+Multi-Goal Management Service for AI Nutritionist Assistant
+
+Handles multiple simultaneous goals and custom goal processing with intelligent
+constraint merging and prioritization for personalized nutrition coaching.
 """
 
-import logging
-from typing import Dict, List, Any, Optional, Set
-from dataclasses import dataclass
-from enum import Enum
 import json
+import logging
+from typing import Dict, Any, List, Optional, Union
+from dataclasses import dataclass, asdict
+from enum import Enum
+from datetime import datetime
+import re
 
 logger = logging.getLogger(__name__)
 
-class DietaryRestrictionType(Enum):
-    """Types of dietary restrictions"""
-    VEGETARIAN = "vegetarian"
-    VEGAN = "vegan"
-    GLUTEN_FREE = "gluten_free"
-    DAIRY_FREE = "dairy_free"
-    NUT_FREE = "nut_free"
-    SOY_FREE = "soy_free"
-    SHELLFISH_FREE = "shellfish_free"
-    EGG_FREE = "egg_free"
-    PESCATARIAN = "pescatarian"
-    KETOGENIC = "ketogenic"
-    PALEO = "paleo"
-    LOW_SODIUM = "low_sodium"
-    LOW_SUGAR = "low_sugar"
-    LOW_CARB = "low_carb"
-    HALAL = "halal"
-    KOSHER = "kosher"
 
-class HealthConditionType(Enum):
-    """Types of health conditions affecting diet"""
-    DIABETES = "diabetes"
-    HYPERTENSION = "hypertension"
-    HEART_DISEASE = "heart_disease"
-    KIDNEY_DISEASE = "kidney_disease"
-    LIVER_DISEASE = "liver_disease"
-    CELIAC_DISEASE = "celiac_disease"
-    CROHNS_DISEASE = "crohns_disease"
-    IBS = "irritable_bowel_syndrome"
-    GERD = "gastroesophageal_reflux"
-    HYPOTHYROIDISM = "hypothyroidism"
-    HYPERTHYROIDISM = "hyperthyroidism"
-    FOOD_ALLERGIES = "food_allergies"
-    EATING_DISORDER = "eating_disorder"
+class GoalType(Enum):
+    """Standard goal types supported by the system"""
+    BUDGET = "budget"
+    WEIGHT_LOSS = "weight_loss"
+    MUSCLE_GAIN = "muscle_gain"
+    GUT_HEALTH = "gut_health"
+    ENERGY = "energy"
+    HEART_HEALTH = "heart_health"
+    DIABETES_FRIENDLY = "diabetes_friendly"
+    PLANT_FORWARD = "plant_forward"
+    ANTI_INFLAMMATORY = "anti_inflammatory"
+    QUICK_MEALS = "quick_meals"
+    FAMILY_FRIENDLY = "family_friendly"
+    CUSTOM = "custom"
+
+
+class GoalPriority(Enum):
+    """Goal priority levels for constraint resolution"""
+    LOW = 1
+    MEDIUM = 2
+    HIGH = 3
+    CRITICAL = 4
+
 
 @dataclass
-class ConstraintRule:
-    """Rule for handling dietary constraints"""
-    constraint_type: str
-    forbidden_ingredients: List[str]
-    forbidden_categories: List[str]
-    required_nutrients: Dict[str, float]
-    max_nutrients: Dict[str, float]
-    substitution_rules: Dict[str, str]
-    severity: str  # "strict", "moderate", "flexible"
+class UserGoal:
+    """Individual goal with type, priority, and metadata"""
+    goal_type: str
+    priority: int = 2  # Medium priority by default
+    label: Optional[str] = None  # For custom goals
+    constraints: Dict[str, Any] = None
+    created_at: str = None
+    last_updated: str = None
+    
+    def __post_init__(self):
+        if self.constraints is None:
+            self.constraints = {}
+        if self.created_at is None:
+            self.created_at = datetime.utcnow().isoformat()
+        if self.last_updated is None:
+            self.last_updated = self.created_at
 
-class DietaryConstraintHandler:
-    """
-    Handles all dietary restrictions and health condition constraints
-    for meal planning and recipe recommendations.
-    """
+
+@dataclass
+class MergedConstraints:
+    """Merged nutrition and lifestyle constraints from multiple goals"""
+    # Nutrition targets
+    daily_calories: Optional[int] = None
+    protein_grams: Optional[int] = None
+    fiber_grams: Optional[int] = None
+    sodium_mg: Optional[int] = None
+    added_sugar_grams: Optional[int] = None
     
-    def __init__(self):
-        self.logger = logging.getLogger(__name__)
-        self.constraint_rules = self._initialize_constraint_rules()
-        self.allergen_database = self._initialize_allergen_database()
-        self.health_condition_rules = self._initialize_health_condition_rules()
+    # Budget constraints
+    max_cost_per_meal: Optional[float] = None
+    weekly_budget: Optional[float] = None
     
-    def validate_meal_constraints(
-        self, 
-        meal: Dict[str, Any], 
-        user_constraints: List[str],
-        health_conditions: List[str] = None
-    ) -> Dict[str, Any]:
-        """
-        Validate a meal against user's dietary constraints and health conditions
+    # Time constraints
+    max_prep_time: Optional[int] = None
+    quick_meal_preference: bool = False
+    
+    # Dietary emphasis
+    emphasized_foods: List[str] = None
+    avoided_foods: List[str] = None
+    required_nutrients: List[str] = None
+    
+    # Meal characteristics
+    plant_protein_percentage: Optional[float] = None
+    whole_grain_preference: bool = False
+    anti_inflammatory_focus: bool = False
+    
+    def __post_init__(self):
+        if self.emphasized_foods is None:
+            self.emphasized_foods = []
+        if self.avoided_foods is None:
+            self.avoided_foods = []
+        if self.required_nutrients is None:
+            self.required_nutrients = []
+
+
+class MultiGoalService:
+    """Service for managing multiple user goals and constraint merging"""
+    
+    def __init__(self, user_service):
+        self.user_service = user_service
         
-        Args:
-            meal: Meal data to validate
-            user_constraints: List of user's dietary restrictions
-            health_conditions: List of user's health conditions
-            
-        Returns:
-            Validation results with violations and recommendations
-        """
-        try:
-            self.logger.info(f"Validating meal constraints for {len(user_constraints)} restrictions")
-            
-            validation_result = {
-                "is_compliant": True,
-                "violations": [],
-                "warnings": [],
-                "recommendations": [],
-                "severity_score": 0,
-                "constraint_details": {}
+        # Standard goal definitions with their default constraints
+        self.goal_definitions = {
+            GoalType.BUDGET.value: {
+                "name": "Budget-Friendly",
+                "description": "Keep meal costs low while maintaining nutrition",
+                "constraints": {
+                    "max_cost_per_meal": 4.00,
+                    "emphasized_foods": ["beans", "lentils", "rice", "oats", "seasonal_vegetables", "chicken_thighs"],
+                    "avoided_foods": ["premium_cuts", "exotic_ingredients", "out_of_season"]
+                }
+            },
+            GoalType.MUSCLE_GAIN.value: {
+                "name": "Muscle Building",
+                "description": "Optimize protein intake for muscle development",
+                "constraints": {
+                    "protein_grams": 140,
+                    "daily_calories": 2400,
+                    "emphasized_foods": ["lean_protein", "eggs", "Greek_yogurt", "quinoa"],
+                    "required_nutrients": ["protein", "leucine", "creatine"]
+                }
+            },
+            GoalType.WEIGHT_LOSS.value: {
+                "name": "Weight Management",
+                "description": "Create sustainable caloric deficit with high satiety",
+                "constraints": {
+                    "daily_calories": 1600,
+                    "fiber_grams": 35,
+                    "emphasized_foods": ["vegetables", "lean_protein", "whole_grains"],
+                    "avoided_foods": ["refined_sugar", "processed_foods"]
+                }
+            },
+            GoalType.GUT_HEALTH.value: {
+                "name": "Gut Health",
+                "description": "Support digestive health and microbiome",
+                "constraints": {
+                    "fiber_grams": 40,
+                    "emphasized_foods": ["fermented_foods", "prebiotics", "diverse_vegetables"],
+                    "required_nutrients": ["fiber", "probiotics", "polyphenols"]
+                }
+            },
+            GoalType.ENERGY.value: {
+                "name": "Energy Optimization",
+                "description": "Stabilize blood sugar and optimize energy levels",
+                "constraints": {
+                    "added_sugar_grams": 25,
+                    "emphasized_foods": ["complex_carbs", "healthy_fats", "steady_protein"],
+                    "avoided_foods": ["refined_sugar", "high_glycemic_foods"]
+                }
+            },
+            GoalType.HEART_HEALTH.value: {
+                "name": "Heart Health",
+                "description": "Support cardiovascular health through nutrition",
+                "constraints": {
+                    "sodium_mg": 1500,
+                    "emphasized_foods": ["omega3_fish", "nuts", "olive_oil", "vegetables"],
+                    "anti_inflammatory_focus": True
+                }
+            },
+            GoalType.QUICK_MEALS.value: {
+                "name": "Quick & Easy",
+                "description": "Minimize prep time while maintaining nutrition",
+                "constraints": {
+                    "max_prep_time": 20,
+                    "quick_meal_preference": True,
+                    "emphasized_foods": ["one_pot_meals", "sheet_pan_recipes", "no_chop_ingredients"]
+                }
+            },
+            GoalType.PLANT_FORWARD.value: {
+                "name": "Plant-Forward",
+                "description": "Emphasize plant-based nutrition",
+                "constraints": {
+                    "plant_protein_percentage": 60,
+                    "emphasized_foods": ["legumes", "nuts", "seeds", "vegetables", "whole_grains"],
+                    "whole_grain_preference": True
+                }
             }
+        }
+        
+        # Custom goal knowledge base - maps common labels to dietary proxies
+        self.custom_goal_proxies = {
+            "skin health": {
+                "emphasized_foods": ["omega3_foods", "antioxidant_rich", "zinc_rich"],
+                "required_nutrients": ["vitamin_c", "vitamin_e", "omega3", "zinc"],
+                "description": "Focus on omega-3s, antioxidants, and skin-supporting nutrients"
+            },
+            "sleep": {
+                "emphasized_foods": ["magnesium_rich", "tryptophan_rich", "herbal_teas"],
+                "avoided_foods": ["caffeine_evening", "heavy_late_meals"],
+                "description": "Include magnesium, avoid late caffeine, light evening meals"
+            },
+            "brain health": {
+                "emphasized_foods": ["omega3_fish", "blueberries", "dark_leafy_greens"],
+                "required_nutrients": ["omega3", "antioxidants", "choline"],
+                "description": "Support cognitive function with brain-healthy nutrients"
+            },
+            "immune support": {
+                "emphasized_foods": ["vitamin_c_rich", "zinc_rich", "garlic", "ginger"],
+                "required_nutrients": ["vitamin_c", "vitamin_d", "zinc"],
+                "description": "Boost immune system with key vitamins and minerals"
+            },
+            "bone health": {
+                "emphasized_foods": ["calcium_rich", "vitamin_d_rich", "magnesium_rich"],
+                "required_nutrients": ["calcium", "vitamin_d", "magnesium", "vitamin_k"],
+                "description": "Support bone density with calcium, vitamin D, and cofactors"
+            }
+        }
+    
+    def add_user_goal(self, user_id: str, goal_input: str, priority: int = 2) -> Dict[str, Any]:
+        """Add a new goal for the user, handling both standard and custom goals"""
+        try:
+            # Parse the goal input
+            parsed_goal = self._parse_goal_input(goal_input)
             
-            # Check dietary restrictions
-            for constraint in user_constraints:
-                constraint_validation = self._validate_dietary_restriction(meal, constraint)
-                if not constraint_validation["is_compliant"]:
-                    validation_result["is_compliant"] = False
-                    validation_result["violations"].extend(constraint_validation["violations"])
-                    validation_result["severity_score"] += constraint_validation["severity_score"]
-                
-                validation_result["constraint_details"][constraint] = constraint_validation
+            # Get current user profile
+            user_profile = self.user_service.get_user_profile(user_id)
+            if not user_profile:
+                return {"success": False, "error": "User profile not found"}
             
-            # Check health condition constraints
-            if health_conditions:
-                for condition in health_conditions:
-                    condition_validation = self._validate_health_condition(meal, condition)
-                    if not condition_validation["is_compliant"]:
-                        validation_result["warnings"].extend(condition_validation["warnings"])
-                        validation_result["recommendations"].extend(condition_validation["recommendations"])
-                    
-                    validation_result["constraint_details"][condition] = condition_validation
+            # Initialize goals if not present
+            if 'goals' not in user_profile:
+                user_profile['goals'] = []
             
-            # Generate overall recommendations
-            if validation_result["violations"]:
-                validation_result["recommendations"].extend(
-                    self._generate_compliance_recommendations(meal, user_constraints)
+            # Create goal object
+            if parsed_goal['is_standard']:
+                goal = UserGoal(
+                    goal_type=parsed_goal['goal_type'],
+                    priority=priority,
+                    constraints=self.goal_definitions[parsed_goal['goal_type']]['constraints'].copy()
+                )
+            else:
+                # Custom goal
+                custom_constraints = self._get_custom_goal_constraints(parsed_goal['label'])
+                goal = UserGoal(
+                    goal_type=GoalType.CUSTOM.value,
+                    priority=priority,
+                    label=parsed_goal['label'],
+                    constraints=custom_constraints
                 )
             
-            return validation_result
+            # Add to user goals
+            user_profile['goals'].append(asdict(goal))
+            user_profile['last_updated'] = datetime.utcnow().isoformat()
             
-        except Exception as e:
-            self.logger.error(f"Error validating meal constraints: {str(e)}")
+            # Save updated profile
+            self.user_service.table.put_item(Item=user_profile)
+            
+            # Generate acknowledgment message
+            ack_message = self._generate_goal_acknowledgment(goal, user_profile['goals'])
+            
             return {
-                "is_compliant": False,
-                "error": str(e),
-                "violations": ["Validation failed"],
-                "warnings": [],
-                "recommendations": ["Please review meal manually"]
-            }
-    
-    def filter_recipes_by_constraints(
-        self, 
-        recipes: List[Dict[str, Any]], 
-        user_constraints: List[str],
-        health_conditions: List[str] = None
-    ) -> List[Dict[str, Any]]:
-        """
-        Filter a list of recipes based on dietary constraints
-        
-        Args:
-            recipes: List of recipes to filter
-            user_constraints: User's dietary restrictions
-            health_conditions: User's health conditions
-            
-        Returns:
-            Filtered list of compliant recipes
-        """
-        try:
-            compliant_recipes = []
-            
-            for recipe in recipes:
-                validation = self.validate_meal_constraints(
-                    recipe, user_constraints, health_conditions
-                )
-                
-                if validation["is_compliant"]:
-                    # Add constraint compliance metadata
-                    recipe["constraint_compliance"] = {
-                        "validated_constraints": user_constraints,
-                        "compliance_score": 100 - validation["severity_score"],
-                        "validation_timestamp": validation.get("timestamp")
-                    }
-                    compliant_recipes.append(recipe)
-            
-            self.logger.info(f"Filtered {len(compliant_recipes)} compliant recipes from {len(recipes)} total")
-            return compliant_recipes
-            
-        except Exception as e:
-            self.logger.error(f"Error filtering recipes: {str(e)}")
-            return recipes  # Return original list if filtering fails
-    
-    def suggest_ingredient_substitutions(
-        self, 
-        ingredient: str, 
-        user_constraints: List[str]
-    ) -> List[Dict[str, Any]]:
-        """
-        Suggest ingredient substitutions based on dietary constraints
-        
-        Args:
-            ingredient: Original ingredient to substitute
-            user_constraints: User's dietary restrictions
-            
-        Returns:
-            List of suitable substitutions with details
-        """
-        try:
-            substitutions = []
-            
-            for constraint in user_constraints:
-                if constraint in self.constraint_rules:
-                    rule = self.constraint_rules[constraint]
-                    
-                    # Check if ingredient violates constraint
-                    if (ingredient.lower() in [item.lower() for item in rule.forbidden_ingredients] or
-                        self._ingredient_in_forbidden_categories(ingredient, rule.forbidden_categories)):
-                        
-                        # Find substitutions
-                        for original, substitute in rule.substitution_rules.items():
-                            if original.lower() in ingredient.lower():
-                                substitutions.append({
-                                    "original": ingredient,
-                                    "substitute": substitute,
-                                    "reason": f"Compliant with {constraint}",
-                                    "constraint_type": constraint,
-                                    "nutrition_impact": self._analyze_substitution_nutrition(ingredient, substitute)
-                                })
-            
-            # Remove duplicates and sort by suitability
-            unique_substitutions = self._deduplicate_substitutions(substitutions)
-            return sorted(unique_substitutions, key=lambda x: x.get("suitability_score", 50), reverse=True)
-            
-        except Exception as e:
-            self.logger.error(f"Error suggesting substitutions: {str(e)}")
-            return []
-    
-    def get_constraint_nutrition_guidelines(
-        self, 
-        user_constraints: List[str],
-        health_conditions: List[str] = None
-    ) -> Dict[str, Any]:
-        """
-        Get nutrition guidelines based on constraints and health conditions
-        
-        Args:
-            user_constraints: User's dietary restrictions
-            health_conditions: User's health conditions
-            
-        Returns:
-            Comprehensive nutrition guidelines
-        """
-        try:
-            guidelines = {
-                "daily_targets": {},
-                "daily_limits": {},
-                "recommended_foods": [],
-                "foods_to_avoid": [],
-                "special_considerations": [],
-                "nutrient_priorities": {}
+                "success": True,
+                "goal": asdict(goal),
+                "acknowledgment": ack_message,
+                "total_goals": len(user_profile['goals'])
             }
             
-            # Process dietary restrictions
-            for constraint in user_constraints:
-                if constraint in self.constraint_rules:
-                    rule = self.constraint_rules[constraint]
-                    
-                    # Merge nutrition requirements
-                    for nutrient, amount in rule.required_nutrients.items():
-                        if nutrient in guidelines["daily_targets"]:
-                            guidelines["daily_targets"][nutrient] = max(
-                                guidelines["daily_targets"][nutrient], amount
-                            )
-                        else:
-                            guidelines["daily_targets"][nutrient] = amount
-                    
-                    # Merge nutrition limits
-                    for nutrient, limit in rule.max_nutrients.items():
-                        if nutrient in guidelines["daily_limits"]:
-                            guidelines["daily_limits"][nutrient] = min(
-                                guidelines["daily_limits"][nutrient], limit
-                            )
-                        else:
-                            guidelines["daily_limits"][nutrient] = limit
-                    
-                    # Add forbidden foods
-                    guidelines["foods_to_avoid"].extend(rule.forbidden_ingredients)
+        except Exception as e:
+            logger.error(f"Error adding goal for user {user_id}: {str(e)}")
+            return {"success": False, "error": "Failed to add goal"}
+    
+    def update_goal_priorities(self, user_id: str, priority_updates: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Update the priority ranking of user goals"""
+        try:
+            user_profile = self.user_service.get_user_profile(user_id)
+            if not user_profile or 'goals' not in user_profile:
+                return {"success": False, "error": "No goals found for user"}
             
-            # Process health conditions
-            if health_conditions:
-                for condition in health_conditions:
-                    if condition in self.health_condition_rules:
-                        condition_rule = self.health_condition_rules[condition]
-                        guidelines["special_considerations"].extend(
-                            condition_rule.get("considerations", [])
-                        )
-                        guidelines["nutrient_priorities"].update(
-                            condition_rule.get("nutrient_priorities", {})
-                        )
+            # Update priorities
+            for update in priority_updates:
+                goal_type = update.get('goal_type')
+                new_priority = update.get('priority')
+                label = update.get('label')  # For custom goals
+                
+                for goal in user_profile['goals']:
+                    if goal['goal_type'] == goal_type:
+                        if goal_type == GoalType.CUSTOM.value and goal.get('label') != label:
+                            continue
+                        goal['priority'] = new_priority
+                        goal['last_updated'] = datetime.utcnow().isoformat()
+                        break
             
-            # Clean up duplicates
-            guidelines["foods_to_avoid"] = list(set(guidelines["foods_to_avoid"]))
-            guidelines["special_considerations"] = list(set(guidelines["special_considerations"]))
+            # Save updated profile
+            user_profile['last_updated'] = datetime.utcnow().isoformat()
+            self.user_service.table.put_item(Item=user_profile)
             
-            return guidelines
+            return {"success": True, "message": "Goal priorities updated successfully"}
             
         except Exception as e:
-            self.logger.error(f"Error generating nutrition guidelines: {str(e)}")
-            return {"error": str(e)}
+            logger.error(f"Error updating goal priorities for user {user_id}: {str(e)}")
+            return {"success": False, "error": "Failed to update priorities"}
     
-    def check_allergen_safety(
-        self, 
-        meal: Dict[str, Any], 
-        known_allergies: List[str]
-    ) -> Dict[str, Any]:
-        """
-        Check meal for allergen safety based on known allergies
-        
-        Args:
-            meal: Meal to check for allergens
-            known_allergies: List of known food allergies
-            
-        Returns:
-            Allergen safety assessment
-        """
+    def merge_goal_constraints(self, user_id: str) -> MergedConstraints:
+        """Merge all user goals into a single constraint set with priority weighting"""
         try:
-            safety_assessment = {
-                "is_safe": True,
-                "allergen_warnings": [],
-                "cross_contamination_risks": [],
-                "severity_level": "none",
-                "recommendations": []
-            }
+            user_profile = self.user_service.get_user_profile(user_id)
+            if not user_profile or 'goals' not in user_profile:
+                return MergedConstraints()  # Return empty constraints
             
-            ingredients = meal.get('ingredients', [])
+            goals = [UserGoal(**goal_data) for goal_data in user_profile['goals']]
+            merged = MergedConstraints()
             
-            for allergy in known_allergies:
-                allergen_info = self.allergen_database.get(allergy.lower(), {})
-                
-                # Check direct ingredients
-                for ingredient in ingredients:
-                    if self._contains_allergen(ingredient, allergen_info):
-                        safety_assessment["is_safe"] = False
-                        safety_assessment["allergen_warnings"].append({
-                            "allergen": allergy,
-                            "ingredient": ingredient,
-                            "severity": allergen_info.get("severity", "moderate")
-                        })
-                
-                # Check cross-contamination risks
-                cross_contamination = self._check_cross_contamination(ingredients, allergen_info)
-                if cross_contamination:
-                    safety_assessment["cross_contamination_risks"].extend(cross_contamination)
+            # Sort goals by priority (highest first)
+            goals_by_priority = sorted(goals, key=lambda g: g.priority, reverse=True)
             
-            # Determine overall severity
-            if safety_assessment["allergen_warnings"]:
-                severities = [warning["severity"] for warning in safety_assessment["allergen_warnings"]]
-                if "severe" in severities:
-                    safety_assessment["severity_level"] = "severe"
-                elif "moderate" in severities:
-                    safety_assessment["severity_level"] = "moderate"
+            # Process constraints in priority order
+            for goal in goals_by_priority:
+                self._merge_single_goal_constraints(merged, goal)
+            
+            return merged
+            
+        except Exception as e:
+            logger.error(f"Error merging constraints for user {user_id}: {str(e)}")
+            return MergedConstraints()
+    
+    def generate_ai_prompt_context(self, user_id: str) -> str:
+        """Generate AI prompt context including all user goals with priorities"""
+        try:
+            user_profile = self.user_service.get_user_profile(user_id)
+            if not user_profile or 'goals' not in user_profile:
+                return ""
+            
+            goals = [UserGoal(**goal_data) for goal_data in user_profile['goals']]
+            if not goals:
+                return ""
+            
+            # Sort by priority
+            goals_by_priority = sorted(goals, key=lambda g: g.priority, reverse=True)
+            
+            # Build context
+            context_parts = ["User's nutrition goals (in priority order):"]
+            
+            for i, goal in enumerate(goals_by_priority, 1):
+                if goal.goal_type == GoalType.CUSTOM.value:
+                    goal_name = f"Custom: {goal.label}"
+                    description = goal.constraints.get('description', 'Custom nutrition goal')
                 else:
-                    safety_assessment["severity_level"] = "mild"
+                    goal_def = self.goal_definitions.get(goal.goal_type, {})
+                    goal_name = goal_def.get('name', goal.goal_type)
+                    description = goal_def.get('description', '')
+                
+                priority_text = ["", "Low", "Medium", "High", "Critical"][goal.priority]
+                context_parts.append(f"{i}. {goal_name} ({priority_text} priority) - {description}")
             
-            # Generate recommendations
-            if not safety_assessment["is_safe"]:
-                safety_assessment["recommendations"] = self._generate_allergen_recommendations(
-                    safety_assessment["allergen_warnings"]
-                )
+            # Add constraint summary
+            merged_constraints = self.merge_goal_constraints(user_id)
+            constraint_summary = self._summarize_constraints(merged_constraints)
             
-            return safety_assessment
+            if constraint_summary:
+                context_parts.append("\nMerged constraints:")
+                context_parts.extend([f"• {item}" for item in constraint_summary])
+            
+            # Add conflict resolution guidance
+            if len(goals) > 1:
+                context_parts.append(f"\nWhen goals conflict, prioritize in the order listed above.")
+                context_parts.append("Provide transparent trade-off explanations when compromises are needed.")
+            
+            return "\n".join(context_parts)
             
         except Exception as e:
-            self.logger.error(f"Error checking allergen safety: {str(e)}")
-            return {
-                "is_safe": False,
-                "error": str(e),
-                "recommendations": ["Consult with healthcare provider"]
+            logger.error(f"Error generating AI context for user {user_id}: {str(e)}")
+            return ""
+    
+    def handle_unknown_goal(self, user_id: str, goal_text: str) -> Dict[str, Any]:
+        """Handle unrecognized goals with intelligent categorization and proxy mapping"""
+        try:
+            # Clean and normalize the goal text
+            normalized_goal = goal_text.lower().strip()
+            
+            # Check if it matches any known custom goal proxies
+            matched_proxy = None
+            for known_goal, proxy_data in self.custom_goal_proxies.items():
+                if self._text_similarity(normalized_goal, known_goal) > 0.7:
+                    matched_proxy = known_goal
+                    break
+            
+            if matched_proxy:
+                # Use existing proxy
+                constraints = self.custom_goal_proxies[matched_proxy].copy()
+                description = constraints.pop('description', 'Custom nutrition goal')
+                
+                acknowledgment = f"I don't have a dedicated *{goal_text}* tracker, but I can {description}."
+            else:
+                # Create new custom goal with basic constraints
+                constraints = self._infer_constraints_from_text(goal_text)
+                acknowledgment = f"I'll track *{goal_text}* as a custom goal and adapt based on your feedback."
+            
+            # Add the goal
+            result = self.add_user_goal(user_id, goal_text, priority=2)
+            if result['success']:
+                result['acknowledgment'] = acknowledgment
+                result['is_new_custom_goal'] = matched_proxy is None
+                
+                # Log for analytics if it's a new goal type
+                if matched_proxy is None:
+                    self._log_new_custom_goal(goal_text, constraints)
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error handling unknown goal '{goal_text}' for user {user_id}: {str(e)}")
+            return {"success": False, "error": "Failed to process custom goal"}
+    
+    def get_trending_custom_goals(self, min_users: int = 5) -> List[Dict[str, Any]]:
+        """Get custom goals that are trending across users for potential promotion"""
+        # This would require analytics tracking - placeholder implementation
+        return [
+            {"label": "skin health", "user_count": 12, "success_rate": 0.85},
+            {"label": "sleep", "user_count": 8, "success_rate": 0.90},
+            {"label": "brain health", "user_count": 6, "success_rate": 0.78}
+        ]
+    
+    def _parse_goal_input(self, goal_input: str) -> Dict[str, Any]:
+        """Parse goal input to determine if it's standard or custom"""
+        goal_lower = goal_input.lower().strip()
+        
+        # Check for standard goal matches
+        for goal_type, definition in self.goal_definitions.items():
+            goal_name = definition['name'].lower()
+            if goal_lower in goal_name or goal_name in goal_lower:
+                return {"is_standard": True, "goal_type": goal_type}
+            
+            # Check common aliases
+            aliases = {
+                GoalType.BUDGET.value: ["cheap", "affordable", "save money", "budget"],
+                GoalType.MUSCLE_GAIN.value: ["build muscle", "gain muscle", "bulk", "protein"],
+                GoalType.WEIGHT_LOSS.value: ["lose weight", "diet", "cut", "slim down"],
+                GoalType.GUT_HEALTH.value: ["gut health", "digestion", "microbiome"],
+                GoalType.ENERGY.value: ["energy", "fatigue", "tired"],
+                GoalType.QUICK_MEALS.value: ["quick", "fast", "easy", "simple", "busy"]
             }
+            
+            if goal_type in aliases:
+                for alias in aliases[goal_type]:
+                    if alias in goal_lower:
+                        return {"is_standard": True, "goal_type": goal_type}
+        
+        # Not a standard goal - treat as custom
+        return {"is_standard": False, "label": goal_input}
     
-    def _validate_dietary_restriction(
-        self, 
-        meal: Dict[str, Any], 
-        restriction: str
-    ) -> Dict[str, Any]:
-        """Validate meal against a specific dietary restriction"""
-        if restriction not in self.constraint_rules:
-            return {"is_compliant": True, "violations": [], "severity_score": 0}
+    def _get_custom_goal_constraints(self, label: str) -> Dict[str, Any]:
+        """Get constraints for a custom goal, using proxies when available"""
+        label_lower = label.lower()
         
-        rule = self.constraint_rules[restriction]
-        validation = {
-            "is_compliant": True,
-            "violations": [],
-            "severity_score": 0
-        }
+        # Check for known proxies
+        for known_goal, proxy_data in self.custom_goal_proxies.items():
+            if self._text_similarity(label_lower, known_goal) > 0.7:
+                return proxy_data.copy()
         
-        ingredients = meal.get('ingredients', [])
-        
-        # Check forbidden ingredients
-        for ingredient in ingredients:
-            if ingredient.lower() in [item.lower() for item in rule.forbidden_ingredients]:
-                validation["is_compliant"] = False
-                validation["violations"].append(f"Contains forbidden ingredient: {ingredient}")
-                validation["severity_score"] += 10 if rule.severity == "strict" else 5
-        
-        # Check forbidden categories
-        for ingredient in ingredients:
-            if self._ingredient_in_forbidden_categories(ingredient, rule.forbidden_categories):
-                validation["is_compliant"] = False
-                validation["violations"].append(f"Contains ingredient from forbidden category: {ingredient}")
-                validation["severity_score"] += 8 if rule.severity == "strict" else 3
-        
-        return validation
+        # Infer constraints from text if no proxy found
+        return self._infer_constraints_from_text(label)
     
-    def _validate_health_condition(
-        self, 
-        meal: Dict[str, Any], 
-        condition: str
-    ) -> Dict[str, Any]:
-        """Validate meal against health condition requirements"""
-        if condition not in self.health_condition_rules:
-            return {"is_compliant": True, "warnings": [], "recommendations": []}
+    def _infer_constraints_from_text(self, text: str) -> Dict[str, Any]:
+        """Infer basic constraints from goal text using keyword analysis"""
+        constraints = {"description": f"Custom goal focused on {text}"}
+        text_lower = text.lower()
         
-        condition_rule = self.health_condition_rules[condition]
-        validation = {
-            "is_compliant": True,
-            "warnings": [],
-            "recommendations": []
-        }
+        # Health-related keywords
+        if any(word in text_lower for word in ["health", "wellness", "immune", "recovery"]):
+            constraints["emphasized_foods"] = ["nutrient_dense", "whole_foods", "vegetables"]
         
-        # Check nutrient limits
-        for nutrient, limit in condition_rule.get("max_nutrients", {}).items():
-            meal_amount = meal.get(nutrient, 0)
-            if meal_amount > limit:
-                validation["warnings"].append(
-                    f"High {nutrient} content ({meal_amount}) may not be suitable for {condition}"
-                )
-                validation["recommendations"].append(f"Consider reducing {nutrient} intake")
+        # Performance keywords
+        if any(word in text_lower for word in ["performance", "athletic", "endurance", "strength"]):
+            constraints["protein_grams"] = 120
+            constraints["emphasized_foods"] = ["lean_protein", "complex_carbs"]
         
-        return validation
+        # Beauty/appearance keywords
+        if any(word in text_lower for word in ["skin", "hair", "beauty", "appearance"]):
+            constraints["emphasized_foods"] = ["antioxidant_rich", "omega3_foods"]
+            constraints["required_nutrients"] = ["vitamin_c", "vitamin_e", "omega3"]
+        
+        # Mental health keywords
+        if any(word in text_lower for word in ["mood", "stress", "mental", "brain", "focus"]):
+            constraints["emphasized_foods"] = ["omega3_fish", "dark_chocolate", "nuts"]
+            constraints["avoided_foods"] = ["refined_sugar", "alcohol"]
+        
+        return constraints
     
-    def _initialize_constraint_rules(self) -> Dict[str, ConstraintRule]:
-        """Initialize dietary constraint rules"""
-        rules = {}
+    def _merge_single_goal_constraints(self, merged: MergedConstraints, goal: UserGoal) -> None:
+        """Merge a single goal's constraints into the merged constraint set"""
+        constraints = goal.constraints
+        priority_weight = goal.priority / 4.0  # Normalize to 0.25-1.0
         
-        # Vegetarian
-        rules["vegetarian"] = ConstraintRule(
-            constraint_type="vegetarian",
-            forbidden_ingredients=["beef", "pork", "chicken", "turkey", "fish", "seafood", "gelatin"],
-            forbidden_categories=["meat", "poultry", "fish", "seafood"],
-            required_nutrients={"protein": 60, "iron": 18, "vitamin_b12": 2.4},
-            max_nutrients={},
-            substitution_rules={
-                "chicken": "tofu",
-                "beef": "tempeh",
-                "fish": "chickpeas"
-            },
-            severity="strict"
-        )
+        # Merge numeric constraints (taking stricter values for higher priority goals)
+        numeric_fields = [
+            ('daily_calories', 'daily_calories'),
+            ('protein_grams', 'protein_grams'),
+            ('fiber_grams', 'fiber_grams'),
+            ('sodium_mg', 'sodium_mg'),
+            ('added_sugar_grams', 'added_sugar_grams'),
+            ('max_cost_per_meal', 'max_cost_per_meal'),
+            ('weekly_budget', 'weekly_budget'),
+            ('max_prep_time', 'max_prep_time')
+        ]
         
-        # Vegan
-        rules["vegan"] = ConstraintRule(
-            constraint_type="vegan",
-            forbidden_ingredients=["beef", "pork", "chicken", "turkey", "fish", "seafood", "dairy", "eggs", "honey", "gelatin"],
-            forbidden_categories=["meat", "poultry", "fish", "seafood", "dairy", "eggs"],
-            required_nutrients={"protein": 60, "iron": 18, "vitamin_b12": 2.4, "calcium": 1000},
-            max_nutrients={},
-            substitution_rules={
-                "milk": "almond_milk",
-                "cheese": "nutritional_yeast",
-                "eggs": "flax_eggs"
-            },
-            severity="strict"
-        )
+        for merged_field, constraint_field in numeric_fields:
+            if constraint_field in constraints:
+                current_value = getattr(merged, merged_field)
+                new_value = constraints[constraint_field]
+                
+                if current_value is None:
+                    setattr(merged, merged_field, new_value)
+                else:
+                    # For limits/maximums, take the stricter (lower) value
+                    if merged_field in ['sodium_mg', 'added_sugar_grams', 'max_cost_per_meal', 'max_prep_time']:
+                        setattr(merged, merged_field, min(current_value, new_value))
+                    # For targets/minimums, take weighted average favoring higher priority
+                    else:
+                        weighted_value = (current_value * (1 - priority_weight)) + (new_value * priority_weight)
+                        setattr(merged, merged_field, int(weighted_value))
         
-        # Gluten-free
-        rules["gluten_free"] = ConstraintRule(
-            constraint_type="gluten_free",
-            forbidden_ingredients=["wheat", "barley", "rye", "spelt", "bread", "pasta"],
-            forbidden_categories=["gluten_containing_grains"],
-            required_nutrients={},
-            max_nutrients={},
-            substitution_rules={
-                "wheat_flour": "rice_flour",
-                "bread": "gluten_free_bread",
-                "pasta": "rice_pasta"
-            },
-            severity="strict"
-        )
+        # Merge boolean flags (OR logic for preferences)
+        boolean_fields = ['quick_meal_preference', 'whole_grain_preference', 'anti_inflammatory_focus']
+        for field in boolean_fields:
+            if constraints.get(field, False):
+                setattr(merged, field, True)
         
-        # Ketogenic
-        rules["ketogenic"] = ConstraintRule(
-            constraint_type="ketogenic",
-            forbidden_ingredients=["sugar", "bread", "pasta", "rice", "potatoes"],
-            forbidden_categories=["high_carb"],
-            required_nutrients={"fat": 120},
-            max_nutrients={"carbs": 20},
-            substitution_rules={
-                "rice": "cauliflower_rice",
-                "pasta": "zucchini_noodles",
-                "potatoes": "radishes"
-            },
-            severity="moderate"
-        )
+        # Merge lists (union with deduplication)
+        list_fields = ['emphasized_foods', 'avoided_foods', 'required_nutrients']
+        for field in list_fields:
+            if field in constraints:
+                current_list = getattr(merged, field)
+                new_items = constraints[field]
+                combined = list(set(current_list + new_items))
+                setattr(merged, field, combined)
         
-        return rules
+        # Handle percentage fields
+        if 'plant_protein_percentage' in constraints:
+            current_pct = merged.plant_protein_percentage
+            new_pct = constraints['plant_protein_percentage']
+            
+            if current_pct is None:
+                merged.plant_protein_percentage = new_pct
+            else:
+                # Take weighted average
+                merged.plant_protein_percentage = (current_pct * (1 - priority_weight)) + (new_pct * priority_weight)
     
-    def _initialize_allergen_database(self) -> Dict[str, Dict[str, Any]]:
-        """Initialize allergen information database"""
-        return {
-            "nuts": {
-                "severity": "severe",
-                "related_ingredients": ["almonds", "walnuts", "pecans", "cashews", "pistachios"],
-                "cross_contamination_risks": ["granola", "chocolate", "baked_goods"]
-            },
-            "shellfish": {
-                "severity": "severe",
-                "related_ingredients": ["shrimp", "crab", "lobster", "clams", "mussels"],
-                "cross_contamination_risks": ["seafood_restaurants", "fish_sauce"]
-            },
-            "dairy": {
-                "severity": "moderate",
-                "related_ingredients": ["milk", "cheese", "butter", "yogurt", "cream"],
-                "cross_contamination_risks": ["processed_foods", "baked_goods"]
-            }
-        }
+    def _summarize_constraints(self, constraints: MergedConstraints) -> List[str]:
+        """Generate human-readable constraint summary"""
+        summary = []
+        
+        if constraints.daily_calories:
+            summary.append(f"Target ~{constraints.daily_calories} calories daily")
+        
+        if constraints.protein_grams:
+            summary.append(f"Aim for {constraints.protein_grams}g protein")
+        
+        if constraints.max_cost_per_meal:
+            summary.append(f"Keep meals under ${constraints.max_cost_per_meal:.2f}")
+        
+        if constraints.max_prep_time:
+            summary.append(f"Limit prep time to {constraints.max_prep_time} minutes")
+        
+        if constraints.emphasized_foods:
+            foods = ", ".join(constraints.emphasized_foods[:3])
+            summary.append(f"Emphasize: {foods}")
+        
+        if constraints.avoided_foods:
+            foods = ", ".join(constraints.avoided_foods[:3])
+            summary.append(f"Minimize: {foods}")
+        
+        return summary
     
-    def _initialize_health_condition_rules(self) -> Dict[str, Dict[str, Any]]:
-        """Initialize health condition dietary rules"""
-        return {
-            "diabetes": {
-                "max_nutrients": {"sugar": 25, "carbs": 150},
-                "considerations": ["Monitor blood sugar levels", "Prefer complex carbohydrates"],
-                "nutrient_priorities": {"fiber": "high", "protein": "moderate"}
-            },
-            "hypertension": {
-                "max_nutrients": {"sodium": 2300},
-                "considerations": ["Limit processed foods", "Increase potassium intake"],
-                "nutrient_priorities": {"potassium": "high", "magnesium": "moderate"}
-            },
-            "heart_disease": {
-                "max_nutrients": {"saturated_fat": 13, "cholesterol": 200},
-                "considerations": ["Focus on omega-3 fatty acids", "Limit trans fats"],
-                "nutrient_priorities": {"omega_3": "high", "fiber": "high"}
-            }
-        }
+    def _generate_goal_acknowledgment(self, goal: UserGoal, all_goals: List[Dict]) -> str:
+        """Generate conversational acknowledgment for goal addition"""
+        if goal.goal_type == GoalType.CUSTOM.value:
+            goal_name = goal.label
+        else:
+            goal_name = self.goal_definitions[goal.goal_type]['name']
+        
+        if len(all_goals) == 1:
+            return f"Got it! I'll focus on {goal_name.lower()} in your meal plans."
+        
+        # Multiple goals - create compound acknowledgment
+        goal_names = []
+        for g in all_goals:
+            if g['goal_type'] == GoalType.CUSTOM.value:
+                goal_names.append(g['label'])
+            else:
+                goal_names.append(self.goal_definitions[g['goal_type']]['name'].lower())
+        
+        if len(goal_names) == 2:
+            return f"Perfect! I'll balance {goal_names[0]} + {goal_names[1]} in your meals."
+        else:
+            formatted_goals = ", ".join(goal_names[:-1]) + f", and {goal_names[-1]}"
+            return f"Got it 👍 I'll optimize for {formatted_goals}. Since you have multiple goals, which should I prioritize most?"
     
-    def _ingredient_in_forbidden_categories(
-        self, 
-        ingredient: str, 
-        forbidden_categories: List[str]
-    ) -> bool:
-        """Check if ingredient belongs to forbidden categories"""
-        ingredient_categories = {
-            "beef": ["meat"],
-            "chicken": ["meat", "poultry"],
-            "fish": ["seafood"],
-            "milk": ["dairy"],
-            "wheat": ["gluten_containing_grains"],
-            "sugar": ["high_carb"]
-        }
+    def _text_similarity(self, text1: str, text2: str) -> float:
+        """Simple text similarity score (could be enhanced with proper NLP)"""
+        words1 = set(text1.lower().split())
+        words2 = set(text2.lower().split())
         
-        ingredient_cats = ingredient_categories.get(ingredient.lower(), [])
-        return any(cat in forbidden_categories for cat in ingredient_cats)
+        if not words1 or not words2:
+            return 0.0
+        
+        intersection = words1.intersection(words2)
+        union = words1.union(words2)
+        
+        return len(intersection) / len(union)
     
-    def _analyze_substitution_nutrition(
-        self, 
-        original: str, 
-        substitute: str
-    ) -> Dict[str, str]:
-        """Analyze nutritional impact of ingredient substitution"""
-        return {
-            "protein_change": "similar",
-            "calorie_change": "lower",
-            "fiber_change": "higher",
-            "overall_impact": "positive"
-        }
-    
-    def _deduplicate_substitutions(
-        self, 
-        substitutions: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
-        """Remove duplicate substitutions"""
-        seen = set()
-        unique = []
-        
-        for sub in substitutions:
-            key = (sub["original"], sub["substitute"])
-            if key not in seen:
-                seen.add(key)
-                unique.append(sub)
-        
-        return unique
-    
-    def _contains_allergen(
-        self, 
-        ingredient: str, 
-        allergen_info: Dict[str, Any]
-    ) -> bool:
-        """Check if ingredient contains specific allergen"""
-        related_ingredients = allergen_info.get("related_ingredients", [])
-        return ingredient.lower() in [item.lower() for item in related_ingredients]
-    
-    def _check_cross_contamination(
-        self, 
-        ingredients: List[str], 
-        allergen_info: Dict[str, Any]
-    ) -> List[str]:
-        """Check for cross-contamination risks"""
-        contamination_risks = []
-        risk_ingredients = allergen_info.get("cross_contamination_risks", [])
-        
-        for ingredient in ingredients:
-            if ingredient.lower() in [item.lower() for item in risk_ingredients]:
-                contamination_risks.append(ingredient)
-        
-        return contamination_risks
-    
-    def _generate_compliance_recommendations(
-        self, 
-        meal: Dict[str, Any], 
-        constraints: List[str]
-    ) -> List[str]:
-        """Generate recommendations for constraint compliance"""
-        recommendations = []
-        
-        for constraint in constraints:
-            if constraint == "vegetarian":
-                recommendations.append("Replace meat with plant-based protein sources")
-            elif constraint == "gluten_free":
-                recommendations.append("Use gluten-free alternatives for grains")
-            elif constraint == "dairy_free":
-                recommendations.append("Substitute dairy with plant-based alternatives")
-        
-        return recommendations
-    
-    def _generate_allergen_recommendations(
-        self, 
-        allergen_warnings: List[Dict[str, Any]]
-    ) -> List[str]:
-        """Generate recommendations for allergen safety"""
-        recommendations = []
-        
-        for warning in allergen_warnings:
-            allergen = warning["allergen"]
-            ingredient = warning["ingredient"]
-            recommendations.append(f"Remove {ingredient} due to {allergen} allergy")
-            recommendations.append(f"Read all labels carefully for {allergen} contamination")
-        
-        if any(w["severity"] == "severe" for w in allergen_warnings):
-            recommendations.append("Consult with allergist before consuming")
-        
-        return recommendations
+    def _log_new_custom_goal(self, goal_text: str, constraints: Dict[str, Any]) -> None:
+        """Log new custom goals for analytics and trend analysis"""
+        # This would typically write to an analytics service
+        logger.info(f"New custom goal logged: '{goal_text}' with constraints: {constraints}")

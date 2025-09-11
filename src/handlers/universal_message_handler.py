@@ -19,15 +19,16 @@ from urllib.parse import quote, unquote_plus
 import boto3
 from botocore.exceptions import ClientError
 
-# Import our services
-from services.consolidated_ai_nutrition_service import ConsolidatedAINutritionService
-from services.user_service import UserService
-from services.meal_plan_service import MealPlanService
-from services.messaging_service import UniversalMessagingService
-from services.subscription_service import get_subscription_service
-from services.nutrition_messaging_service import NutritionMessagingService
-from services.user_linking_service import UserLinkingService
-from services.multi_user_messaging_handler import MultiUserMessagingHandler
+# Import our domain-organized services with correct class names
+from services.nutrition.insights import NutritionInsights
+from services.nutrition.tracker import NutritionTracker
+from services.personalization.preferences import UserPreferencesService
+from services.personalization.goals import HealthGoalsService
+from services.meal_planning.planner import MealPlanningService
+from services.messaging.sms import SMSCommunicationService
+from services.messaging.templates import MessageTemplatesService
+from services.messaging.notifications import NotificationManagementService
+from services.business.subscription import SubscriptionService
 
 # Configure logging
 logger = logging.getLogger()
@@ -37,16 +38,24 @@ logger.setLevel(logging.INFO)
 dynamodb = boto3.resource('dynamodb')
 ssm = boto3.client('ssm')
 
-# Initialize services
-user_service = UserService(dynamodb)
-consolidated_ai_service = ConsolidatedAINutritionService()
-meal_plan_service = MealPlanService(dynamodb, consolidated_ai_service)
-messaging_service = UniversalMessagingService()
-subscription_service = get_subscription_service()
-nutrition_messaging_service = NutritionMessagingService(consolidated_ai_service)
-user_linking_service = UserLinkingService(user_service, messaging_service)
-multi_user_handler = MultiUserMessagingHandler(user_linking_service, user_service, messaging_service)
-nutrition_messaging_service = NutritionMessagingService(nutrition_tracking_service)
+# Initialize domain services using correct class names
+user_preferences_service = UserPreferencesService(dynamodb)
+nutrition_insights_service = NutritionInsights()
+nutrition_tracker_service = NutritionTracker()
+health_goals_service = HealthGoalsService()
+meal_planning_service = MealPlanningService(dynamodb, nutrition_insights_service)
+sms_communication_service = SMSCommunicationService()
+message_templates_service = MessageTemplatesService()
+notification_management_service = NotificationManagementService()
+subscription_service = SubscriptionService()
+
+# Compatibility aliases for existing code
+user_service = user_preferences_service
+messaging_service = sms_communication_service
+nutrition_messaging_service = message_templates_service
+consolidated_ai_service = nutrition_insights_service
+meal_plan_service = meal_planning_service
+multi_user_handler = notification_management_service
 
 
 def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:

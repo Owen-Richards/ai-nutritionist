@@ -1,1028 +1,725 @@
 """
-Message Templates Service
+Enhanced Messaging Service with Nutrition Tracking UX
 
-Manages message templates, personalization, and intelligent content generation
-for various communication types and user segments.
-
-Consolidates functionality from:
-- message_personalization_service.py
-- template_management_service.py
+Battle-tested messaging patterns for nutrition power users with
+daily/weekly facts, feeling checks, and adaptive nudging.
+Enhanced with multi-goal support and custom goal handling.
 """
 
-from typing import Dict, List, Optional, Any, Tuple, Set
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from enum import Enum
-import json
 import logging
+from typing import Dict, List, Any, Optional
+from datetime import datetime
 import re
-import random
-from collections import defaultdict
 
 logger = logging.getLogger(__name__)
 
-
-class TemplateType(Enum):
-    """Types of message templates."""
-    WELCOME = "welcome"
-    MEAL_PLAN_DELIVERY = "meal_plan_delivery"
-    GOAL_PROGRESS = "goal_progress"
-    REMINDER = "reminder"
-    FEEDBACK_REQUEST = "feedback_request"
-    NUTRITION_TIP = "nutrition_tip"
-    CONGRATULATIONS = "congratulations"
-    ENCOURAGEMENT = "encouragement"
-    WEEKLY_SUMMARY = "weekly_summary"
-    SEASONAL_CONTENT = "seasonal_content"
-    PROMOTIONAL = "promotional"
-    SYSTEM_NOTIFICATION = "system_notification"
-
-
-class PersonalizationLevel(Enum):
-    """Levels of message personalization."""
-    BASIC = "basic"          # Name only
-    MODERATE = "moderate"    # Name + preferences
-    ADVANCED = "advanced"    # Full context + behavior
-    DYNAMIC = "dynamic"      # Real-time adaptation
-
-
-class MessageTone(Enum):
-    """Tone options for messages."""
-    FRIENDLY = "friendly"
-    PROFESSIONAL = "professional"
-    ENCOURAGING = "encouraging"
-    CASUAL = "casual"
-    MOTIVATIONAL = "motivational"
-    EDUCATIONAL = "educational"
-
-
-@dataclass
-class TemplateVariable:
-    """Variable placeholder in message templates."""
-    name: str
-    variable_type: str  # text, number, date, list, conditional
-    default_value: Any
-    required: bool = True
-    description: str = ""
-    validation_rules: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class MessageTemplate:
-    """Comprehensive message template definition."""
-    template_id: str
-    name: str
-    template_type: TemplateType
-    content: str
-    variables: List[TemplateVariable]
-    personalization_level: PersonalizationLevel
-    tone: MessageTone
-    target_audience: List[str]
-    usage_context: List[str]
-    character_limit: int
-    language: str = "en"
-    active: bool = True
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    updated_at: datetime = field(default_factory=datetime.utcnow)
-    usage_count: int = 0
-    success_metrics: Dict[str, float] = field(default_factory=dict)
-
-
-@dataclass
-class PersonalizationContext:
-    """Context data for message personalization."""
-    user_id: str
-    user_name: Optional[str]
-    preferences: Dict[str, Any]
-    goals: List[Dict[str, Any]]
-    recent_activity: List[Dict[str, Any]]
-    behavioral_data: Dict[str, Any]
-    location_data: Optional[Dict[str, Any]]
-    time_context: Dict[str, Any]
-    relationship_stage: str  # new, active, returning, at_risk
-
-
-@dataclass
-class GeneratedMessage:
-    """Generated message with metadata."""
-    message_id: str
-    template_id: str
-    user_id: str
-    content: str
-    personalization_level: PersonalizationLevel
-    variables_used: Dict[str, Any]
-    tone_adjustments: List[str]
-    character_count: int
-    generated_at: datetime = field(default_factory=datetime.utcnow)
-    sent: bool = False
-    engagement_predicted: Optional[float] = None
-
-
-class MessageTemplatesService:
+class NutritionMessagingService:
     """
-    Advanced message templates service with AI-powered personalization.
+    Enhanced messaging service with nutrition-specific UX patterns.
+    Provides battle-tested copy for daily nudges, recaps, and feeling checks.
+    Enhanced with multi-goal support and intelligent goal handling.
+    """
     
-    Features:
-    - Dynamic template management with version control
-    - Multi-level personalization (basic to advanced)
-    - Contextual content adaptation based on user behavior
-    - A/B testing framework for template optimization
-    - Intelligent variable substitution and validation
-    - Tone adaptation based on user preferences and relationship stage
-    - Template performance analytics and optimization recommendations
-    """
-
-    def __init__(self):
-        self.templates: Dict[str, MessageTemplate] = {}
-        self.template_versions: Dict[str, List[MessageTemplate]] = defaultdict(list)
-        self.personalization_cache: Dict[str, PersonalizationContext] = {}
-        self.generated_messages: Dict[str, GeneratedMessage] = {}
-        self.tone_adaptations = self._initialize_tone_adaptations()
-        self.seasonal_content = self._initialize_seasonal_content()
+    def __init__(self, nutrition_tracking_service, multi_goal_service=None):
+        self.nutrition_tracking = nutrition_tracking_service
+        self.multi_goal_service = multi_goal_service
         
-        # Load default templates
-        self._load_default_templates()
-
-    def create_template(
-        self,
-        name: str,
-        template_type: str,
-        content: str,
-        variables: List[Dict[str, Any]],
-        personalization_level: str = "moderate",
-        tone: str = "friendly",
-        target_audience: Optional[List[str]] = None,
-        usage_context: Optional[List[str]] = None,
-        character_limit: int = 160
-    ) -> Optional[MessageTemplate]:
-        """
-        Create new message template with validation and optimization.
+        # Template snack buttons for quick tracking
+        self.snack_templates = {
+            'fruit': '🍎 Fruit',
+            'yogurt': '🥛 Yogurt', 
+            'protein_bar': '🍫 Protein Bar',
+            'nuts': '🥜 Nuts',
+            'custom': '✍️ Custom'
+        }
         
-        Args:
-            name: Template name
-            template_type: Type of template
-            content: Template content with variables
-            variables: Variable definitions
-            personalization_level: Level of personalization
-            tone: Message tone
-            target_audience: Target audience segments
-            usage_context: Usage contexts
-            character_limit: Maximum character limit
-            
-        Returns:
-            Created template or None if creation failed
-        """
+        # Portion multiplier options
+        self.portion_options = {
+            '0.5': '½x',
+            '1.0': '1x', 
+            '1.5': '1.5x',
+            '2.0': '2x'
+        }
+        
+        # Feeling check emojis
+        self.feeling_scales = {
+            'mood': ['😞', '😐', '🙂', '😄'],
+            'energy': ['💤', '⚡'],
+            'digestion': ['😣', '🙂', '👍'],
+            'sleep': ['😴', '😴😴', '😴😴😴']
+        }
+    
+    def generate_morning_nudge(self, user_id: str) -> str:
+        """Generate morning goal reminder with personalized targets"""
         try:
-            # Generate template ID
-            template_id = f"{template_type}_{name.lower().replace(' ', '_')}_{int(datetime.utcnow().timestamp())}"
+            targets = self.nutrition_tracking._get_user_targets(user_id)
             
-            # Parse and validate variables
-            template_variables = []
-            for var_data in variables:
-                variable = TemplateVariable(
-                    name=var_data['name'],
-                    variable_type=var_data.get('type', 'text'),
-                    default_value=var_data.get('default', ''),
-                    required=var_data.get('required', True),
-                    description=var_data.get('description', ''),
-                    validation_rules=var_data.get('validation', {})
-                )
-                template_variables.append(variable)
-            
-            # Validate template content
-            if not self._validate_template_content(content, template_variables):
-                logger.error(f"Template content validation failed for {name}")
-                return None
-            
-            # Create template
-            template = MessageTemplate(
-                template_id=template_id,
-                name=name,
-                template_type=TemplateType(template_type.lower()),
-                content=content,
-                variables=template_variables,
-                personalization_level=PersonalizationLevel(personalization_level.lower()),
-                tone=MessageTone(tone.lower()),
-                target_audience=target_audience or ["general"],
-                usage_context=usage_context or ["general"],
-                character_limit=character_limit
-            )
-            
-            # Store template
-            self.templates[template_id] = template
-            self.template_versions[name].append(template)
-            
-            logger.info(f"Created template: {name} ({template_id})")
-            return template
+            return f"""Good morning! 🌅
+
+**Goal today:** **{targets['protein']:.0f}g protein**, **{targets['fiber']:.0f}g fiber**, water **{targets['water_cups']:.0f} cups**. I'll pace your meals to make that easy.
+
+Ready for your first meal? 🍳"""
             
         except Exception as e:
-            logger.error(f"Error creating template: {e}")
-            return None
-
-    def generate_personalized_message(
-        self,
-        template_id: str,
-        user_id: str,
-        context_data: Optional[Dict[str, Any]] = None,
-        override_variables: Optional[Dict[str, Any]] = None
-    ) -> Optional[GeneratedMessage]:
-        """
-        Generate personalized message from template with advanced context adaptation.
-        
-        Args:
-            template_id: Template identifier
-            user_id: User identifier
-            context_data: Additional context data
-            override_variables: Variable overrides
-            
-        Returns:
-            Generated personalized message
-        """
+            logger.error(f"Error generating morning nudge: {e}")
+            return "Good morning! Ready to fuel your day right? 🌅"
+    
+    def generate_pre_dinner_reminder(self, user_id: str) -> str:
+        """Generate pre-dinner nudge if behind on targets"""
         try:
-            template = self.templates.get(template_id)
-            if not template or not template.active:
-                logger.error(f"Template not found or inactive: {template_id}")
-                return None
+            today = datetime.now().strftime('%Y-%m-%d')
+            day_nutrition = self.nutrition_tracking._get_day_nutrition(user_id, today)
+            targets = self.nutrition_tracking._get_user_targets(user_id)
             
-            # Get or create personalization context
-            personalization_context = self._get_personalization_context(user_id, context_data)
+            protein_gap = targets['protein'] - day_nutrition.protein
+            fiber_gap = targets['fiber'] - day_nutrition.fiber
             
-            # Generate variable values
-            variable_values = self._generate_variable_values(
-                template, personalization_context, override_variables
-            )
+            if protein_gap > 15 or fiber_gap > 10:
+                suggestions = []
+                if protein_gap > 15:
+                    suggestions.append(f"protein ({protein_gap:.0f}g to go)")
+                if fiber_gap > 10:
+                    suggestions.append(f"fiber ({fiber_gap:.0f}g to go)")
+                
+                suggestion_text = " and ".join(suggestions)
+                return f"You're at {day_nutrition.protein:.0f}g protein, {day_nutrition.fiber:.0f}g fiber — adding lentils or a yogurt dessert would hit {suggestion_text}. 🎯"
             
-            # Apply tone adjustments
-            adjusted_content, tone_adjustments = self._apply_tone_adjustments(
-                template.content, template.tone, personalization_context
-            )
-            
-            # Substitute variables
-            final_content = self._substitute_variables(adjusted_content, variable_values)
-            
-            # Apply personalization enhancements
-            enhanced_content = self._apply_personalization_enhancements(
-                final_content, template.personalization_level, personalization_context
-            )
-            
-            # Validate character limit
-            if len(enhanced_content) > template.character_limit:
-                enhanced_content = self._optimize_content_length(
-                    enhanced_content, template.character_limit
-                )
-            
-            # Generate message ID
-            message_id = f"{user_id}_{template_id}_{int(datetime.utcnow().timestamp())}"
-            
-            # Predict engagement
-            engagement_prediction = self._predict_engagement(
-                template, personalization_context, enhanced_content
-            )
-            
-            # Create generated message
-            generated_message = GeneratedMessage(
-                message_id=message_id,
-                template_id=template_id,
-                user_id=user_id,
-                content=enhanced_content,
-                personalization_level=template.personalization_level,
-                variables_used=variable_values,
-                tone_adjustments=tone_adjustments,
-                character_count=len(enhanced_content),
-                engagement_predicted=engagement_prediction
-            )
-            
-            # Cache generated message
-            self.generated_messages[message_id] = generated_message
-            
-            # Update template usage
-            template.usage_count += 1
-            template.updated_at = datetime.utcnow()
-            
-            logger.info(f"Generated personalized message for user {user_id}")
-            return generated_message
+            return None  # No reminder needed
             
         except Exception as e:
-            logger.error(f"Error generating personalized message: {e}")
+            logger.error(f"Error generating pre-dinner reminder: {e}")
             return None
-
-    def get_optimal_template(
-        self,
-        template_type: str,
-        user_id: str,
-        context: Optional[Dict[str, Any]] = None
-    ) -> Optional[MessageTemplate]:
-        """
-        Select optimal template based on user context and performance metrics.
-        
-        Args:
-            template_type: Type of template needed
-            user_id: User identifier
-            context: Additional context for selection
-            
-        Returns:
-            Optimal template for the user and context
-        """
-        try:
-            # Get templates of the requested type
-            candidate_templates = [
-                t for t in self.templates.values()
-                if t.template_type.value == template_type.lower() and t.active
+    
+    def generate_meal_tracking_buttons(self, meal_name: str) -> Dict[str, Any]:
+        """Generate quick meal tracking interface"""
+        return {
+            'message': f"How was your **{meal_name}**?",
+            'buttons': [
+                {'text': 'Ate it ✅', 'action': f'track_meal:{meal_name}:ate'},
+                {'text': 'Skipped ❌', 'action': f'track_meal:{meal_name}:skipped'},
+                {'text': 'Modified ✍️', 'action': f'track_meal:{meal_name}:modified'}
+            ],
+            'follow_up': "Portion size?",
+            'portion_buttons': [
+                {'text': '½x', 'action': f'portion:{meal_name}:0.5'},
+                {'text': '1x', 'action': f'portion:{meal_name}:1.0'},
+                {'text': '1.5x', 'action': f'portion:{meal_name}:1.5'},
+                {'text': '2x', 'action': f'portion:{meal_name}:2.0'}
             ]
+        }
+    
+    def generate_snack_buttons(self) -> Dict[str, Any]:
+        """Generate snack tracking interface"""
+        return {
+            'message': "Add a snack?",
+            'buttons': [
+                {'text': '🍎 Fruit', 'action': 'track_snack:fruit'},
+                {'text': '🥛 Yogurt', 'action': 'track_snack:yogurt'},
+                {'text': '🍫 Protein Bar', 'action': 'track_snack:protein_bar'},
+                {'text': '🥜 Nuts', 'action': 'track_snack:nuts'},
+                {'text': '✍️ Custom', 'action': 'track_snack:custom'}
+            ]
+        }
+    
+    def generate_feeling_check_interface(self) -> Dict[str, Any]:
+        """Generate gentle feeling check interface (2 taps, optional)"""
+        return {
+            'message': "How did you feel today? (totally optional! 😊)",
+            'sections': [
+                {
+                    'label': 'Mood',
+                    'buttons': [
+                        {'text': '😞', 'action': 'feeling:mood:😞'},
+                        {'text': '😐', 'action': 'feeling:mood:😐'},
+                        {'text': '🙂', 'action': 'feeling:mood:🙂'},
+                        {'text': '😄', 'action': 'feeling:mood:😄'}
+                    ]
+                },
+                {
+                    'label': 'Energy',
+                    'buttons': [
+                        {'text': '💤', 'action': 'feeling:energy:💤'},
+                        {'text': '⚡', 'action': 'feeling:energy:⚡'}
+                    ]
+                },
+                {
+                    'label': 'Digestion',
+                    'buttons': [
+                        {'text': '😣', 'action': 'feeling:digestion:😣'},
+                        {'text': '🙂', 'action': 'feeling:digestion:🙂'},
+                        {'text': '👍', 'action': 'feeling:digestion:👍'}
+                    ]
+                }
+            ],
+            'footer': "Thanks for sharing! This helps me give you better suggestions. 💙"
+        }
+    
+    def generate_low_energy_suggestions(self, user_id: str) -> str:
+        """Generate suggestions when energy is low 2+ days"""
+        return """I noticed energy's been low. Want to try one of these?
+
+💪 **+15–25g protein earlier in the day**
+🥣 **Higher-fiber breakfast (oats/berries) to stabilize appetite**
+⏰ **Shift dinner lighter & earlier (time-restricted window)**
+💧 **Hydration nudge: +2 cups water before 2pm**
+🌾 **Swap refined carbs at lunch → whole grain/legume base**
+
+Pick what feels doable! 😊"""
+    
+    def generate_good_streak_message(self, user_id: str) -> str:
+        """Generate encouragement when feeling good 2-3 days"""
+        return """Nice streak! Lock it in? 🌟
+
+✅ **Keep current timing window (e.g., 16:8) for another week**
+🍽️ **Repeat top 2 high-satisfaction dinners next week**
+🦠 **Introduce one new gut-friendly add-on (kefir/kimchi) 2×**
+
+You're on a roll! 🎯"""
+    
+    def format_daily_stats_response(self, user_id: str) -> str:
+        """Format 'stats today' response with traffic lights"""
+        try:
+            recap = self.nutrition_tracking.generate_daily_recap(user_id)
             
-            if not candidate_templates:
-                return None
+            # Add traffic light indicators
+            today = datetime.now().strftime('%Y-%m-%d')
+            day_nutrition = self.nutrition_tracking._get_day_nutrition(user_id, today)
+            targets = self.nutrition_tracking._get_user_targets(user_id)
             
-            # Get user context for scoring
-            personalization_context = self._get_personalization_context(user_id, context)
+            indicators = []
             
-            # Score templates based on multiple factors
-            template_scores = []
-            for template in candidate_templates:
-                score = self._calculate_template_score(template, personalization_context, context)
-                template_scores.append((template, score))
+            # Protein indicator
+            protein_pct = day_nutrition.protein / targets['protein'] * 100
+            if protein_pct >= 90:
+                indicators.append("🟢 Protein")
+            elif protein_pct >= 70:
+                indicators.append("🟡 Protein")
+            else:
+                indicators.append("🔴 Protein")
             
-            # Sort by score and return best template
-            template_scores.sort(key=lambda x: x[1], reverse=True)
-            best_template = template_scores[0][0]
+            # Fiber indicator
+            fiber_pct = day_nutrition.fiber / targets['fiber'] * 100
+            if fiber_pct >= 90:
+                indicators.append("🟢 Fiber")
+            elif fiber_pct >= 70:
+                indicators.append("🟡 Fiber")
+            else:
+                indicators.append("🔴 Fiber")
             
-            logger.info(f"Selected optimal template: {best_template.name} for {template_type}")
-            return best_template
+            # Water indicator
+            water_pct = day_nutrition.water_cups / targets['water_cups'] * 100
+            if water_pct >= 90:
+                indicators.append("🟢 Water")
+            elif water_pct >= 70:
+                indicators.append("🟡 Water")
+            else:
+                indicators.append("🔴 Water")
+            
+            return f"{recap}\n\n**Quick status:** {' | '.join(indicators)}"
             
         except Exception as e:
-            logger.error(f"Error selecting optimal template: {e}")
-            return None
-
-    def analyze_template_performance(
-        self,
-        template_id: Optional[str] = None,
-        days_back: int = 30
-    ) -> Dict[str, Any]:
-        """
-        Analyze template performance and provide optimization recommendations.
-        
-        Args:
-            template_id: Specific template to analyze (None for all)
-            days_back: Number of days to analyze
-            
-        Returns:
-            Performance analysis and recommendations
-        """
+            logger.error(f"Error formatting daily stats: {e}")
+            return "Having trouble with your stats right now. Try again? 📊"
+    
+    def format_how_can_i_feel_better_response(self, user_id: str) -> str:
+        """Format personalized feeling-better suggestions"""
         try:
-            cutoff_date = datetime.utcnow() - timedelta(days=days_back)
+            suggestions = self.nutrition_tracking.get_adaptation_suggestions(user_id)
             
-            # Filter messages by criteria
-            relevant_messages = []
-            for message in self.generated_messages.values():
-                if message.generated_at < cutoff_date:
-                    continue
-                if template_id and message.template_id != template_id:
-                    continue
-                relevant_messages.append(message)
+            if not suggestions:
+                return """Here are some quick wins to feel better:
+
+💪 **Add 15g protein to breakfast** (Greek yogurt, eggs)
+💧 **Drink 2 cups water before 2pm** 
+🌾 **Swap refined carbs for whole grains at lunch**
+
+Small changes, big impact! ✨"""
             
-            if not relevant_messages:
-                return {"error": "No messages found for analysis"}
+            # Format personalized suggestions
+            formatted_suggestions = []
+            for i, suggestion in enumerate(suggestions[:3], 1):
+                formatted_suggestions.append(f"**{i}.** {suggestion}")
             
-            # Calculate performance metrics
-            analysis = {
-                "total_messages": len(relevant_messages),
-                "templates_analyzed": len(set(m.template_id for m in relevant_messages)),
-                "average_character_count": sum(m.character_count for m in relevant_messages) / len(relevant_messages),
-                "personalization_distribution": {},
-                "tone_usage": {},
-                "engagement_metrics": {},
-                "optimization_recommendations": []
+            return f"""Based on your recent data, try these:\n\n{chr(10).join(formatted_suggestions)}\n\nPick what feels most doable right now! 😊"""
+            
+        except Exception as e:
+            logger.error(f"Error generating feel better response: {e}")
+            return "Let's focus on small wins: more protein, more water, better timing! 💪"
+    
+    def generate_water_tracking_prompts(self) -> Dict[str, Any]:
+        """Generate water tracking interface"""
+        return {
+            'message': "Log your water intake:",
+            'quick_buttons': [
+                {'text': '1 cup', 'action': 'water:1:cups'},
+                {'text': '2 cups', 'action': 'water:2:cups'},
+                {'text': '16 oz', 'action': 'water:16:oz'},
+                {'text': '500ml', 'action': 'water:500:ml'}
+            ],
+            'custom_input': "Or type amount (cups/oz/ml)"
+        }
+    
+    def generate_strategy_suggestions(self, user_id: str, strategy_type: str) -> str:
+        """Generate evidence-informed strategy suggestions (opt-in)"""
+        suggestions = {
+            'intermittent_fasting': """**Time-Restricted Eating Options:**
+
+🕘 **12:12** → Eat 8am-8pm (gentle start)
+🕙 **14:10** → Eat 10am-8pm (skip breakfast)  
+🕚 **16:8** → Eat 12pm-8pm (classic approach)
+
+Start gradually! Always framed as options. 💡""",
+            
+            'protein_timing': """**Protein Timing Strategy:**
+
+🌅 **Breakfast:** 25-40g to boost satiety & energy
+🌞 **Lunch:** 25-30g to avoid afternoon crashes
+🌙 **Dinner:** 20-25g for recovery
+
+Front-loading protein = all-day energy! 💪""",
+            
+            'gut_friendly': """**Gut-Friendly Rotation:**
+
+🦠 **Prebiotics:** Onion, garlic, oats, bananas, legumes
+🥛 **Fermented:** Kefir, kimchi, yogurt, sauerkraut
+
+Aim for 2-4× per week. Your gut will thank you! 🌱""",
+            
+            'plant_forward': """**Plant-Forward Swaps:**
+
+🌱 **1-3 dinners/week:** Legumes or tofu as protein
+🍄 **Keep bold flavors:** Spices, herbs, umami
+🥗 **Add variety:** Different beans, grains, vegetables
+
+Delicious and sustainable! 🌍"""
+        }
+        
+        footer = "\n\n*General wellness guidance, not medical advice. Consult a clinician for specific conditions.*"
+        
+        return suggestions.get(strategy_type, "Strategy not found.") + footer
+    
+    def format_adaptation_playbook_response(self, issue_type: str, user_id: str) -> str:
+        """Format automatic adaptation responses based on detected issues"""
+        playbooks = {
+            'protein_low': """**Protein Boost Plan:**
+• Add 1 easy protein snack/day (Greek yogurt, edamame, tuna packet)
+• Include protein at every meal
+• Try: protein smoothie, hard-boiled eggs, string cheese 💪""",
+            
+            'fiber_low': """**Fiber Ramp Plan:**
+• Oats/berries breakfast 2×
+• Legume lunch 2×  
+• Extra vegetables at dinner
+• Easy add: 1 tbsp chia seeds (+5g) 🌾""",
+            
+            'sodium_high': """**Sodium Trim Plan:**
+• Swap canned for low-sodium versions
+• Boost citrus/herbs/umami instead of salt
+• Cut 1 processed item
+• Rinse canned beans/vegetables 🧂""",
+            
+            'energy_crashes': """**Energy Stabilizer Plan:**
+• Reduce refined carbs at lunch
+• Add protein + crunch + acid
+• Increase water intake
+• Try: hummus + veggies, apple + almond butter ⚡""",
+            
+            'evening_hunger': """**Evening Balance Plan:**
+• Shift more calories to earlier meals
+• Add volume (veg/soup/salad) to dinner
+• Try: larger lunch, lighter dinner
+• Include: fiber + protein at each meal 🕐""",
+            
+            'bloating': """**Digestive Comfort Plan:**
+• Reduce sugar alcohols/carbonation temporarily
+• Try low-FODMAP swaps if needed
+• Increase walking post-meal
+• Consider: smaller, more frequent meals 🚶"""
+        }
+        
+        response = playbooks.get(issue_type, "Let's work on optimizing your nutrition! 🎯")
+        return f"{response}\n\nTry for 3-5 days and let me know how you feel! 😊"
+    
+    def format_family_cooking_message(self, household_size: int) -> str:
+        """Generate household nutrition coverage for family cooks"""
+        return f"""**Household Nutrition Coverage** (family of {household_size}):
+
+🥩 **Protein targets:** {household_size * 25}g+ per meal
+🌾 **Fiber boost:** Add beans/lentils to 2 meals
+👶 **Kid-friendly:** Hidden vegetables in sauces
+💡 **Prep tip:** Batch cook proteins & grains
+
+Feeding everyone well! 👨‍👩‍👧‍👦"""
+    
+    def format_dinner_party_mode(self) -> str:
+        """Format message for special entertaining weeks"""
+        return """**Dinner Party Week Mode Activated!** 🎉
+
+• Daily stats paused (enjoy your guests!)
+• Monday reset plan ready
+• Lighter meals prep available
+• Hydration reminders only
+
+Have fun entertaining! I'll help you reset smoothly after. 🥂"""
+    
+    def parse_user_input_for_tracking(self, message: str) -> Dict[str, Any]:
+        """Parse natural language for nutrition tracking"""
+        message_lower = message.lower()
+        
+        # Water tracking patterns
+        water_patterns = [
+            r'(\d+)\s*(cups?|cup)\s*(water|h2o)?',
+            r'(\d+)\s*(oz|ounces?)\s*(water|h2o)?',
+            r'(\d+)\s*(ml|milliliters?)\s*(water|h2o)?'
+        ]
+        
+        for pattern in water_patterns:
+            match = re.search(pattern, message_lower)
+            if match:
+                amount = float(match.group(1))
+                unit = 'cups' if 'cup' in match.group(2) else ('oz' if 'oz' in match.group(2) else 'ml')
+                return {'type': 'water', 'amount': amount, 'unit': unit}
+        
+        # Meal tracking patterns
+        meal_patterns = [
+            r'(ate|had|finished)\s+(.+)',
+            r'(skipped|missed)\s+(.+)',
+            r'(modified|changed)\s+(.+)'
+        ]
+        
+        for pattern in meal_patterns:
+            match = re.search(pattern, message_lower)
+            if match:
+                status = 'ate' if 'ate' in match.group(1) or 'had' in match.group(1) or 'finished' in match.group(1) else \
+                        'skipped' if 'skipped' in match.group(1) or 'missed' in match.group(1) else 'modified'
+                meal = match.group(2).strip()
+                return {'type': 'meal', 'meal': meal, 'status': status}
+        
+        # Feeling patterns
+        feeling_keywords = {
+            'tired': {'energy': '💤'},
+            'energetic': {'energy': '⚡'},
+            'low energy': {'energy': '💤'},
+            'high energy': {'energy': '⚡'},
+            'bloated': {'digestion': '😣'},
+            'good digestion': {'digestion': '👍'},
+            'happy': {'mood': '😄'},
+            'sad': {'mood': '😞'},
+            'okay': {'mood': '😐'},
+            'good': {'mood': '🙂'}
+        }
+        
+        for keyword, feeling in feeling_keywords.items():
+            if keyword in message_lower:
+                return {'type': 'feeling', **feeling}
+        
+        return {'type': 'unknown'}
+    
+    def generate_contextual_response(self, user_input: str, user_id: str) -> str:
+        """Generate contextual response based on user input parsing"""
+        try:
+            parsed = self.parse_user_input_for_tracking(user_input)
+            
+            if parsed['type'] == 'water':
+                result = self.nutrition_tracking.track_water(
+                    user_id, parsed['amount'], parsed['unit']
+                )
+                return result['message']
+            
+            elif parsed['type'] == 'meal':
+                result = self.nutrition_tracking.track_meal_simple(
+                    user_id, parsed['meal'], parsed['status']
+                )
+                return result['message']
+            
+            elif parsed['type'] == 'feeling':
+                feeling_data = {k: v for k, v in parsed.items() if k != 'type'}
+                result = self.nutrition_tracking.feeling_check(user_id, **feeling_data)
+                return result['message']
+            
+            else:
+                # Default responses for common queries
+                if 'stats' in user_input.lower():
+                    return self.format_daily_stats_response(user_id)
+                elif 'feel better' in user_input.lower():
+                    return self.format_how_can_i_feel_better_response(user_id)
+                elif 'weekly' in user_input.lower() or 'week' in user_input.lower():
+                    return self.nutrition_tracking.generate_weekly_report(user_id)
+                else:
+                    return None  # Let other handlers take over
+                    
+        except Exception as e:
+            logger.error(f"Error generating contextual response: {e}")
+            return None
+    
+    def get_privacy_footer(self) -> str:
+        """Standard privacy and safety footer"""
+        return "\n\n*General wellness guidance, not medical advice.*"
+    
+    # ===== MULTI-GOAL CONVERSATION METHODS =====
+    
+    def handle_goal_input(self, user_id: str, message: str) -> Dict[str, Any]:
+        """Handle user input about nutrition goals with multi-goal support"""
+        try:
+            if not self.multi_goal_service:
+                return {"success": False, "error": "Multi-goal service not available"}
+            
+            # Parse for multiple goals in a single message
+            goals = self._parse_multiple_goals(message)
+            
+            if not goals:
+                # Try to handle as unknown/custom goal
+                return self.multi_goal_service.handle_unknown_goal(user_id, message)
+            
+            results = []
+            total_success = True
+            
+            # Add each parsed goal
+            for goal_text in goals:
+                result = self.multi_goal_service.add_user_goal(user_id, goal_text)
+                results.append(result)
+                if not result.get('success', False):
+                    total_success = False
+            
+            # Generate combined response
+            if total_success and len(goals) > 1:
+                response = self._generate_multi_goal_acknowledgment(goals, results)
+            elif total_success and len(goals) == 1:
+                response = results[0].get('acknowledgment', 'Goal added successfully!')
+            else:
+                response = "I had trouble understanding some of your goals. Can you clarify?"
+            
+            return {
+                "success": total_success,
+                "message": response,
+                "goals_added": len([r for r in results if r.get('success')]),
+                "results": results
             }
             
-            # Personalization level distribution
-            personalization_counts = defaultdict(int)
-            for message in relevant_messages:
-                personalization_counts[message.personalization_level.value] += 1
-            analysis["personalization_distribution"] = dict(personalization_counts)
+        except Exception as e:
+            logger.error(f"Error handling goal input for user {user_id}: {str(e)}")
+            return {"success": False, "error": "Failed to process goals"}
+    
+    def handle_goal_prioritization(self, user_id: str, message: str) -> Dict[str, Any]:
+        """Handle user input about goal prioritization"""
+        try:
+            if not self.multi_goal_service:
+                return {"success": False, "error": "Multi-goal service not available"}
             
-            # Tone adjustments analysis
-            tone_counts = defaultdict(int)
-            for message in relevant_messages:
-                for tone_adj in message.tone_adjustments:
-                    tone_counts[tone_adj] += 1
-            analysis["tone_usage"] = dict(tone_counts)
+            # Parse priority preferences from message
+            priority_updates = self._parse_priority_preferences(message)
             
-            # Engagement predictions
-            if any(m.engagement_predicted for m in relevant_messages):
-                engagement_scores = [m.engagement_predicted for m in relevant_messages if m.engagement_predicted]
-                analysis["engagement_metrics"] = {
-                    "average_predicted_engagement": sum(engagement_scores) / len(engagement_scores),
-                    "high_engagement_percentage": len([s for s in engagement_scores if s > 0.7]) / len(engagement_scores) * 100
+            if not priority_updates:
+                return {
+                    "success": False,
+                    "message": "I didn't understand your priority preferences. Try saying something like 'budget is more important than muscle gain'"
                 }
             
-            # Generate recommendations
-            recommendations = self._generate_optimization_recommendations(relevant_messages)
-            analysis["optimization_recommendations"] = recommendations
+            # Update priorities
+            result = self.multi_goal_service.update_goal_priorities(user_id, priority_updates)
             
-            logger.info(f"Analyzed performance for {len(relevant_messages)} messages")
-            return analysis
-            
-        except Exception as e:
-            logger.error(f"Error analyzing template performance: {e}")
-            return {"error": str(e)}
-
-    def update_template_performance(
-        self,
-        message_id: str,
-        engagement_metrics: Dict[str, Any]
-    ) -> bool:
-        """
-        Update template performance metrics based on actual engagement.
-        
-        Args:
-            message_id: Generated message identifier
-            engagement_metrics: Actual engagement data
-            
-        Returns:
-            Success status
-        """
-        try:
-            message = self.generated_messages.get(message_id)
-            if not message:
-                return False
-            
-            template = self.templates.get(message.template_id)
-            if not template:
-                return False
-            
-            # Update template success metrics
-            click_rate = engagement_metrics.get('click_rate', 0)
-            response_rate = engagement_metrics.get('response_rate', 0)
-            sentiment_score = engagement_metrics.get('sentiment_score', 0.5)
-            
-            # Update or initialize metrics
-            if not template.success_metrics:
-                template.success_metrics = {}
-            
-            # Running average of metrics
-            current_usage = template.usage_count
-            if current_usage > 1:
-                # Update running averages
-                template.success_metrics['click_rate'] = (
-                    (template.success_metrics.get('click_rate', 0) * (current_usage - 1) + click_rate) / current_usage
-                )
-                template.success_metrics['response_rate'] = (
-                    (template.success_metrics.get('response_rate', 0) * (current_usage - 1) + response_rate) / current_usage
-                )
-                template.success_metrics['sentiment_score'] = (
-                    (template.success_metrics.get('sentiment_score', 0.5) * (current_usage - 1) + sentiment_score) / current_usage
-                )
+            if result.get('success'):
+                response = self._generate_priority_confirmation(priority_updates)
+                return {"success": True, "message": response}
             else:
-                template.success_metrics['click_rate'] = click_rate
-                template.success_metrics['response_rate'] = response_rate
-                template.success_metrics['sentiment_score'] = sentiment_score
-            
-            template.updated_at = datetime.utcnow()
-            
-            logger.info(f"Updated performance metrics for template {template.name}")
-            return True
-            
+                return {"success": False, "message": "Failed to update goal priorities"}
+                
         except Exception as e:
-            logger.error(f"Error updating template performance: {e}")
-            return False
-
-    def _validate_template_content(self, content: str, variables: List[TemplateVariable]) -> bool:
-        """Validate template content and variable references."""
+            logger.error(f"Error handling goal prioritization for user {user_id}: {str(e)}")
+            return {"success": False, "error": "Failed to update priorities"}
+    
+    def generate_multi_goal_meal_plan_intro(self, user_id: str, meal_plan_result) -> str:
+        """Generate introduction for multi-goal meal plans with trade-off explanations"""
         try:
-            # Find all variable placeholders in content
-            variable_pattern = r'\{([^}]+)\}'
-            found_variables = set(re.findall(variable_pattern, content))
+            if not self.multi_goal_service:
+                return "Here's your personalized meal plan!"
             
-            # Check that all referenced variables are defined
-            defined_variables = set(var.name for var in variables)
+            # Get user goals for context
+            user_profile = self.multi_goal_service.user_service.get_user_profile(user_id)
+            goals = user_profile.get('goals', []) if user_profile else []
             
-            undefined_variables = found_variables - defined_variables
-            if undefined_variables:
-                logger.error(f"Undefined variables in template: {undefined_variables}")
-                return False
+            if not goals:
+                return "Here's a balanced meal plan to get you started! 🥗"
             
-            # Check for required variables
-            required_variables = set(var.name for var in variables if var.required)
-            missing_required = required_variables - found_variables
-            if missing_required:
-                logger.warning(f"Required variables not used in template: {missing_required}")
+            # Create introduction based on goals and results
+            intro_parts = []
             
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error validating template content: {e}")
-            return False
-
-    def _get_personalization_context(
-        self,
-        user_id: str,
-        additional_context: Optional[Dict[str, Any]] = None
-    ) -> PersonalizationContext:
-        """Get or create personalization context for user."""
-        try:
-            # Check cache first
-            if user_id in self.personalization_cache:
-                context = self.personalization_cache[user_id]
-                # Update with additional context if provided
-                if additional_context:
-                    context.preferences.update(additional_context.get('preferences', {}))
-                    context.recent_activity.extend(additional_context.get('recent_activity', []))
-                return context
-            
-            # Create new context (in production, this would fetch from user service)
-            context = PersonalizationContext(
-                user_id=user_id,
-                user_name=additional_context.get('user_name') if additional_context else None,
-                preferences=additional_context.get('preferences', {}) if additional_context else {},
-                goals=additional_context.get('goals', []) if additional_context else [],
-                recent_activity=additional_context.get('recent_activity', []) if additional_context else [],
-                behavioral_data=additional_context.get('behavioral_data', {}) if additional_context else {},
-                location_data=additional_context.get('location_data') if additional_context else None,
-                time_context={
-                    'current_time': datetime.utcnow(),
-                    'timezone': 'UTC',
-                    'day_of_week': datetime.utcnow().weekday(),
-                    'hour_of_day': datetime.utcnow().hour
-                },
-                relationship_stage=additional_context.get('relationship_stage', 'active') if additional_context else 'active'
-            )
-            
-            # Cache context
-            self.personalization_cache[user_id] = context
-            return context
-            
-        except Exception as e:
-            logger.error(f"Error getting personalization context: {e}")
-            # Return minimal context
-            return PersonalizationContext(
-                user_id=user_id,
-                user_name=None,
-                preferences={},
-                goals=[],
-                recent_activity=[],
-                behavioral_data={},
-                location_data=None,
-                time_context={'current_time': datetime.utcnow()},
-                relationship_stage='active'
-            )
-
-    def _generate_variable_values(
-        self,
-        template: MessageTemplate,
-        context: PersonalizationContext,
-        overrides: Optional[Dict[str, Any]] = None
-    ) -> Dict[str, Any]:
-        """Generate values for template variables based on context."""
-        values = {}
-        
-        for variable in template.variables:
-            # Check for override first
-            if overrides and variable.name in overrides:
-                values[variable.name] = overrides[variable.name]
-                continue
-            
-            # Generate contextual value
-            if variable.name == 'user_name':
-                values[variable.name] = context.user_name or "there"
-            elif variable.name == 'time_of_day':
-                hour = context.time_context.get('hour_of_day', 12)
-                if hour < 12:
-                    values[variable.name] = "morning"
-                elif hour < 17:
-                    values[variable.name] = "afternoon"
+            # Goal acknowledgment
+            goal_names = []
+            for goal in goals:
+                if goal['goal_type'] == 'custom':
+                    goal_names.append(goal.get('label', 'custom goal'))
                 else:
-                    values[variable.name] = "evening"
-            elif variable.name == 'goal_type':
-                if context.goals:
-                    values[variable.name] = context.goals[0].get('type', 'health')
-                else:
-                    values[variable.name] = 'health'
-            elif variable.name == 'progress_percentage':
-                if context.goals:
-                    values[variable.name] = context.goals[0].get('progress', 50)
-                else:
-                    values[variable.name] = 50
-            elif variable.name == 'cuisine_preference':
-                values[variable.name] = context.preferences.get('cuisine', 'Mediterranean')
-            elif variable.name == 'weekly_streak':
-                values[variable.name] = context.behavioral_data.get('weekly_streak', 3)
+                    goal_def = self.multi_goal_service.goal_definitions.get(goal['goal_type'], {})
+                    goal_names.append(goal_def.get('name', goal['goal_type']).lower())
+            
+            if len(goal_names) == 1:
+                intro_parts.append(f"🎯 Here's your {goal_names[0]} meal plan!")
+            elif len(goal_names) == 2:
+                intro_parts.append(f"🎯 Here's your {goal_names[0]} + {goal_names[1]} meal plan!")
             else:
-                # Use default value
-                values[variable.name] = variable.default_value
-        
-        return values
-
-    def _apply_tone_adjustments(
-        self,
-        content: str,
-        tone: MessageTone,
-        context: PersonalizationContext
-    ) -> Tuple[str, List[str]]:
-        """Apply tone adjustments based on user context and preferences."""
-        adjusted_content = content
-        adjustments = []
-        
-        # Get tone-specific adjustments
-        tone_rules = self.tone_adaptations.get(tone.value, {})
-        
-        # Apply relationship stage adjustments
-        if context.relationship_stage == "new":
-            # More formal and explanatory for new users
-            adjusted_content = self._make_more_explanatory(adjusted_content)
-            adjustments.append("new_user_friendly")
-        elif context.relationship_stage == "at_risk":
-            # More encouraging and supportive
-            adjusted_content = self._make_more_encouraging(adjusted_content)
-            adjustments.append("encouraging_tone")
-        
-        # Apply time-based adjustments
-        hour = context.time_context.get('hour_of_day', 12)
-        if hour < 8 or hour > 20:
-            # More gentle messaging outside normal hours
-            adjusted_content = self._make_more_gentle(adjusted_content)
-            adjustments.append("off_hours_gentle")
-        
-        # Apply preference-based adjustments
-        if context.preferences.get('communication_style') == 'brief':
-            adjusted_content = self._make_more_concise(adjusted_content)
-            adjustments.append("concise_style")
-        
-        return adjusted_content, adjustments
-
-    def _substitute_variables(self, content: str, variable_values: Dict[str, Any]) -> str:
-        """Substitute variable placeholders with actual values."""
-        try:
-            for variable_name, value in variable_values.items():
-                placeholder = f"{{{variable_name}}}"
-                content = content.replace(placeholder, str(value))
+                formatted_goals = ", ".join(goal_names[:-1]) + f", and {goal_names[-1]}"
+                intro_parts.append(f"🎯 Here's your multi-goal plan balancing {formatted_goals}!")
             
-            return content
+            # Add cost summary if budget is a goal
+            if any(goal['goal_type'] == 'budget' for goal in goals):
+                if hasattr(meal_plan_result, 'cost_breakdown'):
+                    total_cost = meal_plan_result.cost_breakdown.get('total_cost', 0)
+                    daily_cost = meal_plan_result.cost_breakdown.get('daily_cost', 0)
+                    intro_parts.append(f"💰 Total cost: ${total_cost:.2f} (~${daily_cost:.2f}/day)")
+            
+            # Add trade-off explanations
+            if hasattr(meal_plan_result, 'trade_offs') and meal_plan_result.trade_offs:
+                intro_parts.append("\n💡 Smart trade-offs made:")
+                for trade_off in meal_plan_result.trade_offs[:2]:  # Limit to top 2
+                    intro_parts.append(f"• {trade_off}")
+            
+            # Add goal satisfaction summary
+            if hasattr(meal_plan_result, 'goal_satisfaction'):
+                high_satisfaction = [goal for goal, score in meal_plan_result.goal_satisfaction.items() if score > 0.8]
+                if high_satisfaction:
+                    intro_parts.append(f"\n✅ Strongly optimized for: {', '.join(high_satisfaction)}")
+            
+            return "\n".join(intro_parts)
             
         except Exception as e:
-            logger.error(f"Error substituting variables: {e}")
-            return content
-
-    def _apply_personalization_enhancements(
-        self,
-        content: str,
-        level: PersonalizationLevel,
-        context: PersonalizationContext
-    ) -> str:
-        """Apply personalization enhancements based on level."""
-        if level == PersonalizationLevel.BASIC:
-            return content  # Already has basic substitutions
-        
-        enhanced_content = content
-        
-        if level in [PersonalizationLevel.MODERATE, PersonalizationLevel.ADVANCED, PersonalizationLevel.DYNAMIC]:
-            # Add contextual elements
-            if context.recent_activity:
-                recent_activity = context.recent_activity[-1]
-                activity_type = recent_activity.get('type', '')
-                if activity_type == 'meal_plan_request':
-                    enhanced_content = self._add_meal_plan_context(enhanced_content, recent_activity)
-        
-        if level in [PersonalizationLevel.ADVANCED, PersonalizationLevel.DYNAMIC]:
-            # Add behavioral insights
-            if context.behavioral_data:
-                enhanced_content = self._add_behavioral_context(enhanced_content, context.behavioral_data)
-        
-        if level == PersonalizationLevel.DYNAMIC:
-            # Real-time adaptations
-            enhanced_content = self._apply_dynamic_adaptations(enhanced_content, context)
-        
-        return enhanced_content
-
-    def _optimize_content_length(self, content: str, max_length: int) -> str:
-        """Optimize content to fit within character limit."""
-        if len(content) <= max_length:
-            return content
-        
-        # Try to preserve important parts while trimming
-        # 1. Remove unnecessary words
-        content = re.sub(r'\b(very|really|quite|actually)\b', '', content)
-        
-        # 2. Shorten common phrases
-        content = content.replace('you are', "you're")
-        content = content.replace('we are', "we're")
-        content = content.replace('it is', "it's")
-        content = content.replace('that is', "that's")
-        
-        # 3. If still too long, truncate with ellipsis
-        if len(content) > max_length:
-            content = content[:max_length-3] + "..."
-        
-        return content
-
-    def _predict_engagement(
-        self,
-        template: MessageTemplate,
-        context: PersonalizationContext,
-        content: str
-    ) -> float:
-        """Predict engagement score for generated message."""
+            logger.error(f"Error generating multi-goal intro for user {user_id}: {str(e)}")
+            return "Here's your personalized meal plan!"
+    
+    def suggest_goal_prioritization(self, user_id: str) -> Optional[str]:
+        """Suggest goal prioritization when user has multiple goals"""
         try:
-            score = 0.5  # Base score
+            if not self.multi_goal_service:
+                return None
             
-            # Template performance factor
-            if template.success_metrics:
-                template_score = template.success_metrics.get('click_rate', 0.3)
-                score += template_score * 0.3
+            user_profile = self.multi_goal_service.user_service.get_user_profile(user_id)
+            goals = user_profile.get('goals', []) if user_profile else []
             
-            # Personalization factor
-            personalization_bonus = {
-                PersonalizationLevel.BASIC: 0.0,
-                PersonalizationLevel.MODERATE: 0.1,
-                PersonalizationLevel.ADVANCED: 0.15,
-                PersonalizationLevel.DYNAMIC: 0.2
-            }
-            score += personalization_bonus.get(template.personalization_level, 0)
+            if len(goals) <= 2:
+                return None  # No need for prioritization
             
-            # Time context factor
-            hour = context.time_context.get('hour_of_day', 12)
-            if 9 <= hour <= 17:  # Business hours
-                score += 0.1
-            elif 18 <= hour <= 21:  # Evening engagement peak
-                score += 0.15
+            # Generate prioritization suggestion
+            goal_names = []
+            for goal in goals:
+                if goal['goal_type'] == 'custom':
+                    goal_names.append(goal.get('label', 'custom goal'))
+                else:
+                    goal_def = self.multi_goal_service.goal_definitions.get(goal['goal_type'], {})
+                    goal_names.append(goal_def.get('name', goal['goal_type']).lower())
             
-            # Content length factor (sweet spot around 120 characters)
-            content_length = len(content)
-            if 80 <= content_length <= 140:
-                score += 0.1
-            elif content_length > 160:
-                score -= 0.1
+            formatted_goals = ", ".join(goal_names)
             
-            # User relationship stage factor
-            relationship_bonus = {
-                'new': 0.05,
-                'active': 0.1,
-                'returning': 0.15,
-                'at_risk': -0.05
-            }
-            score += relationship_bonus.get(context.relationship_stage, 0)
+            return f"""Since you have multiple goals ({formatted_goals}), which should I prioritize most strongly?
             
-            return max(0.0, min(1.0, score))
+You can say something like:
+• "Budget is most important"
+• "Muscle gain first, then budget"
+• "All equally important"
+
+This helps me make better trade-offs in your meal plans! 🎯"""
             
         except Exception as e:
-            logger.error(f"Error predicting engagement: {e}")
-            return 0.5
-
-    def _calculate_template_score(
-        self,
-        template: MessageTemplate,
-        context: PersonalizationContext,
-        selection_context: Optional[Dict[str, Any]]
-    ) -> float:
-        """Calculate score for template selection."""
-        score = 0.0
+            logger.error(f"Error suggesting goal prioritization for user {user_id}: {str(e)}")
+            return None
+    
+    def _parse_multiple_goals(self, message: str) -> List[str]:
+        """Parse multiple goals from a single message"""
+        message_lower = message.lower()
         
-        # Performance metrics weight (40%)
-        if template.success_metrics:
-            performance_score = (
-                template.success_metrics.get('click_rate', 0.3) * 0.5 +
-                template.success_metrics.get('response_rate', 0.2) * 0.3 +
-                template.success_metrics.get('sentiment_score', 0.5) * 0.2
-            )
-            score += performance_score * 0.4
-        else:
-            score += 0.3 * 0.4  # Default performance score
-        
-        # Personalization compatibility (30%)
-        personalization_fit = self._calculate_personalization_fit(template, context)
-        score += personalization_fit * 0.3
-        
-        # Usage frequency (negative factor to promote variety) (20%)
-        usage_penalty = min(0.2, template.usage_count / 1000.0)
-        score += (0.2 - usage_penalty) * 0.2
-        
-        # Context relevance (10%)
-        context_relevance = self._calculate_context_relevance(template, selection_context)
-        score += context_relevance * 0.1
-        
-        return score
-
-    def _calculate_personalization_fit(self, template: MessageTemplate, context: PersonalizationContext) -> float:
-        """Calculate how well template fits user's personalization needs."""
-        # Check if user prefers high personalization
-        high_engagement_user = len(context.recent_activity) > 10
-        
-        if high_engagement_user and template.personalization_level in [PersonalizationLevel.ADVANCED, PersonalizationLevel.DYNAMIC]:
-            return 1.0
-        elif not high_engagement_user and template.personalization_level in [PersonalizationLevel.BASIC, PersonalizationLevel.MODERATE]:
-            return 1.0
-        else:
-            return 0.6
-
-    def _calculate_context_relevance(self, template: MessageTemplate, context: Optional[Dict[str, Any]]) -> float:
-        """Calculate template relevance to current context."""
-        if not context:
-            return 0.5
-        
-        relevance = 0.5
-        
-        # Check target audience match
-        user_segment = context.get('user_segment', 'general')
-        if user_segment in template.target_audience:
-            relevance += 0.3
-        
-        # Check usage context match
-        current_context = context.get('usage_context', 'general')
-        if current_context in template.usage_context:
-            relevance += 0.2
-        
-        return min(1.0, relevance)
-
-    def _generate_optimization_recommendations(self, messages: List[GeneratedMessage]) -> List[str]:
-        """Generate optimization recommendations based on message analysis."""
-        recommendations = []
-        
-        # Analyze character count distribution
-        char_counts = [m.character_count for m in messages]
-        avg_chars = sum(char_counts) / len(char_counts)
-        
-        if avg_chars > 140:
-            recommendations.append("Consider shorter templates - average character count is high")
-        elif avg_chars < 80:
-            recommendations.append("Templates might be too brief - consider adding more context")
-        
-        # Analyze personalization usage
-        personalization_counts = defaultdict(int)
-        for message in messages:
-            personalization_counts[message.personalization_level.value] += 1
-        
-        basic_percentage = personalization_counts.get('basic', 0) / len(messages) * 100
-        if basic_percentage > 60:
-            recommendations.append("Increase personalization levels - too many basic messages")
-        
-        # Analyze tone adjustments
-        all_adjustments = []
-        for message in messages:
-            all_adjustments.extend(message.tone_adjustments)
-        
-        if len(all_adjustments) / len(messages) < 0.5:
-            recommendations.append("Consider more tone adaptations based on user context")
-        
-        return recommendations
-
-    def _load_default_templates(self) -> None:
-        """Load default message templates."""
-        default_templates = [
-            {
-                "name": "Welcome New User",
-                "template_type": "welcome",
-                "content": "Hi {user_name}! Welcome to your personalized nutrition journey. We're excited to help you achieve your {goal_type} goals! 🎯",
-                "variables": [
-                    {"name": "user_name", "type": "text", "default": "there", "required": True},
-                    {"name": "goal_type", "type": "text", "default": "health", "required": True}
-                ],
-                "personalization_level": "moderate",
-                "tone": "friendly",
-                "target_audience": ["new_users"],
-                "usage_context": ["onboarding"]
-            },
-            {
-                "name": "Meal Plan Delivery",
-                "template_type": "meal_plan_delivery",
-                "content": "Good {time_of_day} {user_name}! Your {cuisine_preference} meal plan is ready. Let's make today delicious and nutritious! 🍽️",
-                "variables": [
-                    {"name": "user_name", "type": "text", "default": "there", "required": True},
-                    {"name": "time_of_day", "type": "text", "default": "day", "required": True},
-                    {"name": "cuisine_preference", "type": "text", "default": "healthy", "required": True}
-                ],
-                "personalization_level": "advanced",
-                "tone": "encouraging",
-                "target_audience": ["active_users"],
-                "usage_context": ["meal_planning"]
-            },
-            {
-                "name": "Goal Progress Update",
-                "template_type": "goal_progress",
-                "content": "Amazing work {user_name}! You're {progress_percentage}% towards your goal. Keep up the fantastic momentum! 💪",
-                "variables": [
-                    {"name": "user_name", "type": "text", "default": "there", "required": True},
-                    {"name": "progress_percentage", "type": "number", "default": 50, "required": True}
-                ],
-                "personalization_level": "moderate",
-                "tone": "motivational",
-                "target_audience": ["active_users"],
-                "usage_context": ["progress_tracking"]
-            },
-            {
-                "name": "Weekly Streak Celebration",
-                "template_type": "congratulations",
-                "content": "🎉 Incredible {user_name}! You've maintained your {weekly_streak}-week streak. You're building amazing healthy habits!",
-                "variables": [
-                    {"name": "user_name", "type": "text", "default": "there", "required": True},
-                    {"name": "weekly_streak", "type": "number", "default": 1, "required": True}
-                ],
-                "personalization_level": "advanced",
-                "tone": "congratulatory",
-                "target_audience": ["consistent_users"],
-                "usage_context": ["milestone_celebration"]
-            }
+        # Common multi-goal patterns
+        goal_patterns = [
+            r'want to (.+?) and (.+?)(?:\s|$)',
+            r'(.+?),\s*(.+?),?\s*and (.+)',
+            r'(.+?)\s*\+\s*(.+)',
+            r'both (.+?) and (.+)',
+            r'(.+?) but also (.+)'
         ]
         
-        for template_data in default_templates:
-            self.create_template(**template_data)
-
-    def _initialize_tone_adaptations(self) -> Dict[str, Dict[str, Any]]:
-        """Initialize tone adaptation rules."""
-        return {
-            "friendly": {
-                "greeting_words": ["Hi", "Hello", "Hey"],
-                "enthusiasm_level": "moderate",
-                "emoji_usage": "moderate"
-            },
-            "professional": {
-                "greeting_words": ["Hello", "Good morning", "Good evening"],
-                "enthusiasm_level": "low",
-                "emoji_usage": "minimal"
-            },
-            "encouraging": {
-                "greeting_words": ["Great", "Awesome", "Amazing"],
-                "enthusiasm_level": "high",
-                "emoji_usage": "moderate"
-            },
-            "motivational": {
-                "greeting_words": ["You've got this", "Let's go", "Time to shine"],
-                "enthusiasm_level": "very_high",
-                "emoji_usage": "high"
-            }
-        }
-
-    def _initialize_seasonal_content(self) -> Dict[str, Dict[str, List[str]]]:
-        """Initialize seasonal content variations."""
-        return {
-            "spring": {
-                "themes": ["fresh starts", "renewal", "growth"],
-                "food_focus": ["fresh vegetables", "lighter meals", "seasonal produce"]
-            },
-            "summer": {
-                "themes": ["energy", "outdoor activities", "hydration"],
-                "food_focus": ["grilled foods", "salads", "refreshing drinks"]
-            },
-            "fall": {
-                "themes": ["preparation", "comfort", "harvest"],
-                "food_focus": ["warming spices", "hearty meals", "seasonal flavors"]
-            },
-            "winter": {
-                "themes": ["warmth", "comfort", "maintenance"],
-                "food_focus": ["warming foods", "immune support", "comfort meals"]
-            }
-        }
-
-    def _make_more_explanatory(self, content: str) -> str:
-        """Make content more explanatory for new users."""
-        # Add brief explanations for concepts
-        if "meal plan" in content.lower():
-            content = content.replace("meal plan", "personalized meal plan (tailored just for you)")
-        return content
-
-    def _make_more_encouraging(self, content: str) -> str:
-        """Make content more encouraging and supportive."""
-        encouraging_phrases = [
-            "You're doing great!",
-            "Every step counts!",
-            "We're here to support you!",
-            "You've got this!"
-        ]
-        # Add an encouraging phrase
-        return content + " " + random.choice(encouraging_phrases)
-
-    def _make_more_gentle(self, content: str) -> str:
-        """Make content more gentle for off-hours messaging."""
-        # Soften urgent language
-        content = content.replace("!", ".")
-        content = content.replace("Let's", "When you're ready, let's")
-        return content
-
-    def _make_more_concise(self, content: str) -> str:
-        """Make content more concise for users who prefer brief messages."""
-        # Remove filler words and phrases
-        concise_content = re.sub(r'\b(just|really|very|quite|actually|basically)\b\s*', '', content)
-        concise_content = re.sub(r'\s+', ' ', concise_content).strip()
-        return concise_content
-
-    def _add_meal_plan_context(self, content: str, activity: Dict[str, Any]) -> str:
-        """Add context based on recent meal plan activity."""
-        if "cuisine" in activity:
-            cuisine = activity["cuisine"]
-            return content + f" (Based on your love for {cuisine} cuisine)"
-        return content
-
-    def _add_behavioral_context(self, content: str, behavioral_data: Dict[str, Any]) -> str:
-        """Add context based on behavioral patterns."""
-        if behavioral_data.get("preferred_time") == "morning":
-            return content.replace("today", "this morning")
-        elif behavioral_data.get("preferred_time") == "evening":
-            return content.replace("today", "tonight")
-        return content
-
-    def _apply_dynamic_adaptations(self, content: str, context: PersonalizationContext) -> str:
-        """Apply real-time dynamic adaptations."""
-        # Weather-based adaptations (placeholder)
-        if context.location_data and context.location_data.get("weather") == "cold":
-            content = content.replace("refreshing", "warming")
-            content = content.replace("salad", "soup")
+        for pattern in goal_patterns:
+            match = re.search(pattern, message_lower)
+            if match:
+                goals = [goal.strip() for goal in match.groups()]
+                return [goal for goal in goals if goal]  # Remove empty strings
         
-        return content
+        # Single goal fallback
+        goal_keywords = [
+            'budget', 'cheap', 'save money', 'affordable',
+            'muscle', 'protein', 'build muscle', 'gain muscle',
+            'lose weight', 'weight loss', 'diet',
+            'gut health', 'digestion', 'gut',
+            'energy', 'fatigue', 'tired',
+            'quick', 'fast', 'easy', 'simple'
+        ]
+        
+        for keyword in goal_keywords:
+            if keyword in message_lower:
+                return [keyword]
+        
+        return []
+    
+    def _generate_multi_goal_acknowledgment(self, goals: List[str], results: List[Dict]) -> str:
+        """Generate acknowledgment for multiple goals"""
+        successful_goals = [goals[i] for i, result in enumerate(results) if result.get('success')]
+        
+        if len(successful_goals) == 2:
+            return f"Got it 👍 {successful_goals[0]} + {successful_goals[1]}. I'll balance both in your meal plans!"
+        else:
+            formatted_goals = ", ".join(successful_goals[:-1]) + f", and {successful_goals[-1]}"
+            return f"Perfect! I'll optimize for {formatted_goals}. Since you have multiple goals, which should I prioritize most strongly?"
+    
+    def _parse_priority_preferences(self, message: str) -> List[Dict[str, Any]]:
+        """Parse priority preferences from user message"""
+        message_lower = message.lower()
+        
+        # Priority patterns
+        priority_patterns = [
+            r'(.+?)\s+(?:is\s+)?(?:more\s+important|priority|first)',
+            r'prioritize\s+(.+?)(?:\s|$)',
+            r'(.+?)\s+over\s+(.+)',
+            r'focus\s+on\s+(.+?)(?:\s|$)'
+        ]
+        
+        updates = []
+        for pattern in priority_patterns:
+            match = re.search(pattern, message_lower)
+            if match:
+                high_priority_goal = match.group(1).strip()
+                
+                # Map to goal type (simplified)
+                goal_mapping = {
+                    'budget': 'budget',
+                    'muscle': 'muscle_gain',
+                    'protein': 'muscle_gain',
+                    'weight': 'weight_loss',
+                    'energy': 'energy',
+                    'quick': 'quick_meals',
+                    'gut': 'gut_health'
+                }
+                
+                for keyword, goal_type in goal_mapping.items():
+                    if keyword in high_priority_goal:
+                        updates.append({
+                            'goal_type': goal_type,
+                            'priority': 4  # High priority
+                        })
+                        break
+        
+        return updates
+    
+    def _generate_priority_confirmation(self, priority_updates: List[Dict]) -> str:
+        """Generate confirmation message for priority updates"""
+        if not priority_updates:
+            return "Priority updated!"
+        
+        high_priority_goals = []
+        for update in priority_updates:
+            goal_type = update['goal_type']
+            if hasattr(self.multi_goal_service, 'goal_definitions') and goal_type in self.multi_goal_service.goal_definitions:
+                goal_name = self.multi_goal_service.goal_definitions[goal_type]['name']
+                high_priority_goals.append(goal_name.lower())
+        
+        if len(high_priority_goals) == 1:
+            return f"Got it! I'll prioritize {high_priority_goals[0]} in your meal plans. 🎯"
+        else:
+            formatted_goals = ", ".join(high_priority_goals)
+            return f"Perfect! I'll give top priority to: {formatted_goals} 🎯"

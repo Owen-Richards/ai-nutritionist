@@ -10,11 +10,11 @@ from typing import Dict, Any
 
 import boto3
 
-# Import our services
-from services.ai_service import AIService
-from services.user_service import UserService
-from services.meal_plan_service import MealPlanService
-from services.aws_sms_service import AWSMessagingService
+# Import our domain-organized services
+from services.nutrition.insights import NutritionInsightsService
+from services.personalization.preferences import UserPreferenceService
+from services.meal_planning.planner import MealPlannerService
+from services.messaging.sms import SMSService
 
 # Configure logging
 logger = logging.getLogger()
@@ -23,11 +23,17 @@ logger.setLevel(logging.INFO)
 # Initialize AWS clients
 dynamodb = boto3.resource('dynamodb')
 
-# Initialize services
-user_service = UserService(dynamodb)
-ai_service = AIService()
-meal_plan_service = MealPlanService(dynamodb, ai_service)
-messaging_service = AWSMessagingService()
+# Initialize domain services
+user_preference_service = UserPreferenceService(dynamodb)
+nutrition_insights_service = NutritionInsightsService()
+meal_planner_service = MealPlannerService(dynamodb, nutrition_insights_service)
+sms_service = SMSService()
+
+# Compatibility aliases for existing code
+user_service = user_preference_service
+ai_service = nutrition_insights_service
+meal_plan_service = meal_planner_service
+messaging_service = sms_service
 
 # Set up service dependencies
 meal_plan_service.set_user_service(user_service)

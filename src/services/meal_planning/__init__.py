@@ -2,16 +2,16 @@
 Meal Planning Domain Package
 
 This package contains all meal planning related services organized by responsibility:
-- planner.py: Core meal plan generation logic
-- optimizer.py: Cost and nutrition optimization
-- constraints.py: Dietary restrictions and health condition handling
-- variety.py: Meal variety and rotation enforcement
+- planner.py: Adaptive meal planning (AdaptiveMealPlanningService)
+- optimizer.py: Meal plan optimization (MealPlanService)
+- constraints.py: Multi-goal constraints (MultiGoalService)
+- variety.py: Recipe variety and generation (MultiGoalMealPlanGenerator)
 """
 
-from .planner import MealPlanningService
-from .optimizer import MealOptimizer
-from .constraints import DietaryConstraintHandler
-from .variety import VarietyManager
+from .planner import AdaptiveMealPlanningService as MealPlanningService
+from .optimizer import MealPlanService as MealOptimizer
+from .constraints import MultiGoalService as DietaryConstraintHandler
+from .variety import MultiGoalMealPlanGenerator as VarietyManager
 
 __all__ = [
     'MealPlanningService',

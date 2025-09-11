@@ -106,11 +106,12 @@ def test_python_modules_import():
     
     # Test that modules can be imported (basic syntax validation)
     try:
-        # These will fail at runtime due to missing AWS config, but should compile
-        import services.ai_service
-        import services.user_service
-        import services.meal_plan_service
-        import services.aws_sms_service
+        # Test new domain-organized service imports
+        import services.nutrition.insights
+        import services.personalization.preferences
+        import services.meal_planning.planner
+        import services.messaging.sms
+        import services.business.subscription
         # Basic syntax validation passed
         assert True
     except ImportError as e:

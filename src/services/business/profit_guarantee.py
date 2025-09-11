@@ -6,7 +6,7 @@ Ensures every user generates minimum $1 profit per month through real-time monit
 import json
 import logging
 import os
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from datetime import datetime, timedelta
 from decimal import Decimal
 import boto3

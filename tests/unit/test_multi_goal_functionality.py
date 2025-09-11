@@ -10,8 +10,8 @@ import json
 from unittest.mock import Mock, MagicMock
 from dataclasses import asdict
 
-from src.services.multi_goal_service import MultiGoalService, UserGoal, GoalType, MergedConstraints
-from src.services.multi_goal_meal_planner import MultiGoalMealPlanGenerator
+from src.services.personalization.goals import GoalManagementService, UserGoal, GoalType, MergedConstraints
+from src.services.meal_planning.optimizer import MealOptimizationService
 from src.services.multi_goal_handler import MultiGoalNutritionHandler
 
 
@@ -21,7 +21,7 @@ class TestMultiGoalService:
     def setup_method(self):
         """Setup test fixtures"""
         self.mock_user_service = Mock()
-        self.multi_goal_service = MultiGoalService(self.mock_user_service)
+        self.goal_management_service = GoalManagementService(self.mock_user_service)
         
         # Mock user profile
         self.test_user_profile = {

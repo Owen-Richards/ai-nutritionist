@@ -9,10 +9,10 @@ import os
 from typing import Dict, Any, Optional
 
 import boto3
-from services.aws_sms_service import get_sms_service
-from services.ai_service import AIService
-from services.user_service import UserService
-from services.meal_plan_service import MealPlanService
+from services.messaging.sms import SMSService
+from services.nutrition.insights import NutritionInsightsService
+from services.personalization.preferences import UserPreferenceService
+from services.meal_planning.planner import MealPlannerService
 from handlers.spam_protection_handler import SpamProtectionService
 
 # Configure logging
@@ -23,12 +23,17 @@ logger.setLevel(logging.INFO)
 dynamodb = boto3.resource('dynamodb')
 lambda_client = boto3.client('lambda')
 
-# Initialize services
-sms_service = get_sms_service()
-ai_service = AIService()
-user_service = UserService(dynamodb)
-meal_plan_service = MealPlanService(dynamodb, ai_service)
+# Initialize domain services
+sms_service = SMSService()
+nutrition_insights_service = NutritionInsightsService()
+user_preference_service = UserPreferenceService(dynamodb)
+meal_planner_service = MealPlannerService(dynamodb, nutrition_insights_service)
 spam_service = SpamProtectionService()
+
+# Compatibility aliases for existing code
+ai_service = nutrition_insights_service
+user_service = user_preference_service
+meal_plan_service = meal_planner_service
 
 
 def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:

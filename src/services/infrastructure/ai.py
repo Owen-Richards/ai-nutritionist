@@ -15,7 +15,7 @@ import boto3
 import requests
 from botocore.exceptions import ClientError
 
-from .edamam_service import EdamamService
+from ..nutrition.calculator import EdamamService
 
 logger = logging.getLogger(__name__)
 

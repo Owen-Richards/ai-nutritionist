@@ -1,738 +1,682 @@
 """
-Nutrition Tracker - Track and log nutrition data
-Consolidates: nutrition_tracking_service.py, nutrition_logging_service.py
+Nutrition Tracking Service
+
+Comprehensive nutrition tracking with daily/weekly facts, feeling checks,
+and adaptive nudging system based on battle-tested framework.
 """
 
-import logging
-from typing import Dict, List, Any, Optional, Tuple
-from datetime import datetime, timedelta
-from dataclasses import dataclass, asdict
 import json
+import logging
+from datetime import datetime, timedelta
+from typing import Dict, List, Any, Optional, Tuple
+from dataclasses import dataclass, asdict
+from decimal import Decimal
 
 logger = logging.getLogger(__name__)
 
 @dataclass
-class NutritionEntry:
-    """Single nutrition entry"""
-    timestamp: str
-    meal_type: str  # breakfast, lunch, dinner, snack
-    food_item: str
-    portion_size: float
-    unit: str
-    calories: float
-    protein: float
-    carbs: float
-    fat: float
-    fiber: float
-    sugar: float
-    sodium: float
-    user_id: str
-    source: str = "manual"  # manual, app, api
-    
-@dataclass
-class DailyNutritionSummary:
-    """Daily nutrition summary"""
+class DayNutrition:
+    """Daily nutrition and wellness tracking"""
     date: str
-    user_id: str
-    total_calories: float
-    total_protein: float
-    total_carbs: float
-    total_fat: float
-    total_fiber: float
-    total_sugar: float
-    total_sodium: float
-    meals_logged: int
-    goal_adherence_score: float
-    notes: Optional[str] = None
+    kcal: float = 0
+    protein: float = 0
+    carbs: float = 0
+    fat: float = 0
+    fiber: float = 0
+    sodium: float = 0
+    sugar_added: float = 0
+    water_cups: float = 0
+    steps: Optional[int] = None
+    mood: Optional[str] = None  # 😞 😐 🙂 😄
+    energy: Optional[str] = None  # 💤 ⚡
+    digestion: Optional[str] = None  # 😣 🙂 👍
+    sleep_quality: Optional[str] = None  # 😴😴😴
+    
+    # Meal tracking
+    meals_ate: List[str] = None
+    meals_skipped: List[str] = None
+    meals_modified: List[str] = None
+    snacks: List[str] = None
+    
+    def __post_init__(self):
+        if self.meals_ate is None:
+            self.meals_ate = []
+        if self.meals_skipped is None:
+            self.meals_skipped = []
+        if self.meals_modified is None:
+            self.meals_modified = []
+        if self.snacks is None:
+            self.snacks = []
 
-class NutritionTracker:
+@dataclass
+class WeekSummary:
+    """Weekly nutrition summary and insights"""
+    week_start: str
+    avg_kcal: float
+    avg_protein: float
+    avg_carbs: float
+    avg_fat: float
+    avg_fiber: float
+    avg_sodium: float
+    avg_sugar_added: float
+    avg_water: float
+    
+    wins: List[str] = None
+    tweaks: List[str] = None
+    top_liked_meals: List[Dict] = None
+    protein_delta: float = 0
+    fiber_delta: float = 0
+    
+    def __post_init__(self):
+        if self.wins is None:
+            self.wins = []
+        if self.tweaks is None:
+            self.tweaks = []
+        if self.top_liked_meals is None:
+            self.top_liked_meals = []
+
+@dataclass
+class UserFlags:
+    """User wellness flags for adaptive responses"""
+    low_energy_streak: int = 0
+    high_sodium_week: bool = False
+    fiber_gap: bool = False
+    late_eating_pattern: bool = False
+    good_streak: int = 0
+    protein_below_target_days: int = 0
+    afternoon_crashes: int = 0
+    evening_hunger_spikes: int = 0
+    bloating_flagged: bool = False
+
+class NutritionTrackingService:
     """
-    Comprehensive nutrition tracking service that logs food intake,
-    calculates daily totals, and provides nutrition analysis.
+    Battle-tested nutrition tracking service for power users.
+    Tracks meals, nutrients, feelings, and provides adaptive nudging.
     """
     
-    def __init__(self):
-        self.logger = logging.getLogger(__name__)
-        self.nutrition_database = self._initialize_nutrition_database()
-        self.daily_summaries = {}  # In-memory storage for demo
-        self.nutrition_entries = []  # In-memory storage for demo
-    
-    def log_food_intake(
-        self, 
-        user_id: str, 
-        food_item: str, 
-        portion_size: float, 
-        unit: str,
-        meal_type: str = "snack",
-        nutrition_data: Optional[Dict[str, float]] = None
-    ) -> Dict[str, Any]:
-        """
-        Log a food intake entry for a user
+    def __init__(self, user_service, ai_service):
+        self.user_service = user_service
+        self.ai_service = ai_service
         
-        Args:
-            user_id: User identifier
-            food_item: Name of the food item
-            portion_size: Size of the portion consumed
-            unit: Unit of measurement (grams, cups, pieces, etc.)
-            meal_type: Type of meal (breakfast, lunch, dinner, snack)
-            nutrition_data: Optional nutrition data, will lookup if not provided
-            
-        Returns:
-            Logged entry with nutrition analysis
+        # Nutrition targets (can be personalized per user)
+        self.default_targets = {
+            'kcal': 2000,
+            'protein': 120,
+            'fiber': 30,
+            'sodium': 2000,
+            'water_cups': 8
+        }
+        
+        # Recipe nutrition database (simplified)
+        self.recipe_nutrition_db = {
+            # This would be expanded with actual recipe data
+            'miso_ginger_salmon': {
+                'kcal': 380, 'protein': 32, 'carbs': 8, 'fat': 24, 
+                'fiber': 2, 'sodium': 680, 'omega_3': 1.8
+            },
+            'harissa_chickpeas': {
+                'kcal': 285, 'protein': 12, 'carbs': 45, 'fat': 8,
+                'fiber': 11, 'sodium': 420, 'plant_protein_pct': 100
+            }
+        }
+    
+    def track_meal_simple(self, user_id: str, meal_name: str, status: str, 
+                         portion_multiplier: float = 1.0) -> Dict[str, Any]:
+        """
+        Simple meal tracking: Ate it ✅ / Skipped ❌ / Modified ✍️
         """
         try:
-            self.logger.info(f"Logging food intake: {food_item} for user {user_id}")
+            today = datetime.now().strftime('%Y-%m-%d')
             
-            # Get nutrition data
-            if not nutrition_data:
-                nutrition_data = self._lookup_nutrition_data(food_item, portion_size, unit)
+            # Get or create today's nutrition data
+            day_nutrition = self._get_day_nutrition(user_id, today)
             
-            # Create nutrition entry
-            entry = NutritionEntry(
-                timestamp=datetime.now().isoformat(),
-                meal_type=meal_type,
-                food_item=food_item,
-                portion_size=portion_size,
-                unit=unit,
-                calories=nutrition_data.get('calories', 0),
-                protein=nutrition_data.get('protein', 0),
-                carbs=nutrition_data.get('carbs', 0),
-                fat=nutrition_data.get('fat', 0),
-                fiber=nutrition_data.get('fiber', 0),
-                sugar=nutrition_data.get('sugar', 0),
-                sodium=nutrition_data.get('sodium', 0),
-                user_id=user_id,
-                source="manual"
-            )
+            # Track meal status
+            if status == 'ate':
+                if meal_name not in day_nutrition.meals_ate:
+                    day_nutrition.meals_ate.append(meal_name)
+                # Add nutrition from meal
+                nutrition = self._get_meal_nutrition(meal_name, portion_multiplier)
+                self._add_nutrition_to_day(day_nutrition, nutrition)
+                
+            elif status == 'skipped':
+                if meal_name not in day_nutrition.meals_skipped:
+                    day_nutrition.meals_skipped.append(meal_name)
+                    
+            elif status == 'modified':
+                if meal_name not in day_nutrition.meals_modified:
+                    day_nutrition.meals_modified.append(meal_name)
+                # Would need modification details for accurate nutrition
+                
+            # Save updated nutrition data
+            self._save_day_nutrition(user_id, day_nutrition)
             
-            # Store entry
-            self.nutrition_entries.append(entry)
-            
-            # Update daily summary
-            self._update_daily_summary(user_id, entry)
-            
-            # Return entry with additional analysis
-            entry_dict = asdict(entry)
-            entry_dict.update({
-                "logged_at": entry.timestamp,
-                "nutrition_density": self._calculate_nutrition_density(nutrition_data),
-                "meal_contribution": self._calculate_meal_contribution(user_id, entry)
-            })
-            
-            self.logger.info(f"Successfully logged {food_item} - {nutrition_data.get('calories', 0)} calories")
-            return entry_dict
+            return {
+                'success': True,
+                'message': f"Got it! Marked {meal_name} as {status}.",
+                'current_nutrition': self._get_nutrition_summary(day_nutrition)
+            }
             
         except Exception as e:
-            self.logger.error(f"Error logging food intake: {str(e)}")
-            return {"error": str(e), "success": False}
+            logger.error(f"Error tracking meal: {e}")
+            return {'success': False, 'message': "Had trouble tracking that meal. Try again?"}
     
-    def get_daily_summary(
-        self, 
-        user_id: str, 
-        date: str = None
-    ) -> DailyNutritionSummary:
-        """
-        Get daily nutrition summary for a user
-        
-        Args:
-            user_id: User identifier
-            date: Date in YYYY-MM-DD format, defaults to today
+    def track_snack(self, user_id: str, snack_type: str) -> Dict[str, Any]:
+        """Track optional snacks with template buttons"""
+        try:
+            today = datetime.now().strftime('%Y-%m-%d')
+            day_nutrition = self._get_day_nutrition(user_id, today)
             
-        Returns:
-            Daily nutrition summary
+            # Add snack
+            day_nutrition.snacks.append(snack_type)
+            
+            # Add nutrition (simplified estimates)
+            snack_nutrition = {
+                'fruit': {'kcal': 80, 'carbs': 20, 'fiber': 3},
+                'yogurt': {'kcal': 150, 'protein': 15, 'carbs': 8},
+                'protein_bar': {'kcal': 200, 'protein': 20, 'carbs': 15},
+                'nuts': {'kcal': 160, 'protein': 6, 'fat': 14, 'fiber': 3}
+            }
+            
+            nutrition = snack_nutrition.get(snack_type, {'kcal': 100})
+            self._add_nutrition_to_day(day_nutrition, nutrition)
+            
+            self._save_day_nutrition(user_id, day_nutrition)
+            
+            return {
+                'success': True,
+                'message': f"Added {snack_type} snack! 🍎",
+                'current_nutrition': self._get_nutrition_summary(day_nutrition)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error tracking snack: {e}")
+            return {'success': False, 'message': "Had trouble adding that snack."}
+    
+    def track_water(self, user_id: str, amount: float, unit: str = 'cups') -> Dict[str, Any]:
+        """Track water intake"""
+        try:
+            today = datetime.now().strftime('%Y-%m-%d')
+            day_nutrition = self._get_day_nutrition(user_id, today)
+            
+            # Convert to cups if needed
+            if unit == 'oz':
+                amount = amount / 8
+            elif unit == 'ml':
+                amount = amount / 240
+            
+            day_nutrition.water_cups += amount
+            self._save_day_nutrition(user_id, day_nutrition)
+            
+            target = self.default_targets['water_cups']
+            progress = min(day_nutrition.water_cups / target * 100, 100)
+            
+            return {
+                'success': True,
+                'message': f"Hydration logged! {day_nutrition.water_cups:.1f}/{target} cups ({progress:.0f}%) 💧"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error tracking water: {e}")
+            return {'success': False, 'message': "Had trouble logging water."}
+    
+    def feeling_check(self, user_id: str, mood: str = None, energy: str = None, 
+                     digestion: str = None, sleep: str = None) -> Dict[str, Any]:
+        """
+        Gentle feeling check with emoji scale
+        Mood: 😞 😐 🙂 😄 | Energy: 💤 ⚡ | Digestion: 😣 🙂 👍 | Sleep: 😴😴😴
+        """
+        try:
+            today = datetime.now().strftime('%Y-%m-%d')
+            day_nutrition = self._get_day_nutrition(user_id, today)
+            
+            # Update feelings
+            if mood:
+                day_nutrition.mood = mood
+            if energy:
+                day_nutrition.energy = energy
+            if digestion:
+                day_nutrition.digestion = digestion
+            if sleep:
+                day_nutrition.sleep_quality = sleep
+            
+            self._save_day_nutrition(user_id, day_nutrition)
+            
+            # Check for adaptation triggers
+            adaptation_message = self._check_feeling_adaptations(user_id, day_nutrition)
+            
+            response = "Thanks for checking in! 😊"
+            if adaptation_message:
+                response += f" {adaptation_message}"
+            
+            return {
+                'success': True,
+                'message': response
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in feeling check: {e}")
+            return {'success': False, 'message': "Thanks for sharing how you're feeling!"}
+    
+    def generate_daily_recap(self, user_id: str, date: str = None) -> str:
+        """
+        Generate daily nutrition recap (auto at 8-9pm local)
+        Format: "Today: 1,840 kcal • 124g protein • 31g fiber • 1,850mg sodium
+                ✅ Hit protein 🎯; ⚠️ Fiber a bit low vs 35g goal."
         """
         try:
             if not date:
                 date = datetime.now().strftime('%Y-%m-%d')
             
-            summary_key = f"{user_id}_{date}"
+            day_nutrition = self._get_day_nutrition(user_id, date)
+            targets = self._get_user_targets(user_id)
             
-            if summary_key in self.daily_summaries:
-                return self.daily_summaries[summary_key]
+            # Build main stats line
+            recap = f"Today: **{day_nutrition.kcal:,.0f} kcal** • **{day_nutrition.protein:.0f}g protein** • **{day_nutrition.fiber:.0f}g fiber** • **{day_nutrition.sodium:,.0f}mg sodium**\n"
             
-            # Calculate summary from entries
-            daily_entries = self._get_entries_for_date(user_id, date)
-            summary = self._calculate_daily_summary(user_id, date, daily_entries)
+            # Add target analysis with emojis
+            analyses = []
             
-            self.daily_summaries[summary_key] = summary
-            return summary
-            
-        except Exception as e:
-            self.logger.error(f"Error getting daily summary: {str(e)}")
-            return DailyNutritionSummary(
-                date=date or datetime.now().strftime('%Y-%m-%d'),
-                user_id=user_id,
-                total_calories=0, total_protein=0, total_carbs=0,
-                total_fat=0, total_fiber=0, total_sugar=0,
-                total_sodium=0, meals_logged=0, goal_adherence_score=0
-            )
-    
-    def get_nutrition_trends(
-        self, 
-        user_id: str, 
-        days: int = 7
-    ) -> Dict[str, Any]:
-        """
-        Get nutrition trends over a specified period
-        
-        Args:
-            user_id: User identifier
-            days: Number of days to analyze
-            
-        Returns:
-            Nutrition trends and analysis
-        """
-        try:
-            self.logger.info(f"Analyzing nutrition trends for {days} days")
-            
-            end_date = datetime.now()
-            start_date = end_date - timedelta(days=days-1)
-            
-            trends = {
-                "period": f"{start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}",
-                "daily_averages": {},
-                "trends": {},
-                "consistency_scores": {},
-                "recommendations": []
-            }
-            
-            # Collect daily summaries
-            daily_data = []
-            for i in range(days):
-                current_date = (start_date + timedelta(days=i)).strftime('%Y-%m-%d')
-                summary = self.get_daily_summary(user_id, current_date)
-                daily_data.append(summary)
-            
-            # Calculate averages
-            if daily_data:
-                trends["daily_averages"] = {
-                    "calories": sum(d.total_calories for d in daily_data) / len(daily_data),
-                    "protein": sum(d.total_protein for d in daily_data) / len(daily_data),
-                    "carbs": sum(d.total_carbs for d in daily_data) / len(daily_data),
-                    "fat": sum(d.total_fat for d in daily_data) / len(daily_data),
-                    "fiber": sum(d.total_fiber for d in daily_data) / len(daily_data)
-                }
-                
-                # Calculate trends
-                trends["trends"] = self._calculate_nutrient_trends(daily_data)
-                
-                # Calculate consistency
-                trends["consistency_scores"] = self._calculate_consistency_scores(daily_data)
-                
-                # Generate recommendations
-                trends["recommendations"] = self._generate_trend_recommendations(trends)
-            
-            return trends
-            
-        except Exception as e:
-            self.logger.error(f"Error getting nutrition trends: {str(e)}")
-            return {"error": str(e)}
-    
-    def track_hydration(
-        self, 
-        user_id: str, 
-        amount_ml: float, 
-        beverage_type: str = "water"
-    ) -> Dict[str, Any]:
-        """
-        Track hydration intake
-        
-        Args:
-            user_id: User identifier
-            amount_ml: Amount in milliliters
-            beverage_type: Type of beverage
-            
-        Returns:
-            Hydration tracking result
-        """
-        try:
-            hydration_entry = {
-                "user_id": user_id,
-                "timestamp": datetime.now().isoformat(),
-                "amount_ml": amount_ml,
-                "beverage_type": beverage_type,
-                "calories": self._get_beverage_calories(beverage_type, amount_ml)
-            }
-            
-            # Get daily hydration total
-            today = datetime.now().strftime('%Y-%m-%d')
-            daily_hydration = self._get_daily_hydration(user_id, today)
-            daily_hydration += amount_ml
-            
-            # Hydration goals (2000ml baseline)
-            hydration_goal = 2000
-            progress_percentage = min(100, (daily_hydration / hydration_goal) * 100)
-            
-            result = {
-                "entry": hydration_entry,
-                "daily_total_ml": daily_hydration,
-                "goal_ml": hydration_goal,
-                "progress_percentage": progress_percentage,
-                "remaining_ml": max(0, hydration_goal - daily_hydration),
-                "status": "adequate" if daily_hydration >= hydration_goal else "needs_more"
-            }
-            
-            self.logger.info(f"Tracked {amount_ml}ml of {beverage_type} - daily total: {daily_hydration}ml")
-            return result
-            
-        except Exception as e:
-            self.logger.error(f"Error tracking hydration: {str(e)}")
-            return {"error": str(e)}
-    
-    def log_supplement_intake(
-        self, 
-        user_id: str, 
-        supplement_name: str, 
-        dosage: float, 
-        unit: str
-    ) -> Dict[str, Any]:
-        """
-        Log supplement intake
-        
-        Args:
-            user_id: User identifier
-            supplement_name: Name of the supplement
-            dosage: Dosage amount
-            unit: Unit of dosage
-            
-        Returns:
-            Supplement logging result
-        """
-        try:
-            supplement_entry = {
-                "user_id": user_id,
-                "timestamp": datetime.now().isoformat(),
-                "supplement_name": supplement_name,
-                "dosage": dosage,
-                "unit": unit,
-                "nutrition_contribution": self._get_supplement_nutrition(supplement_name, dosage)
-            }
-            
-            # Track supplement adherence
-            adherence_data = self._track_supplement_adherence(user_id, supplement_name)
-            
-            result = {
-                "entry": supplement_entry,
-                "adherence_data": adherence_data,
-                "recommendations": self._get_supplement_recommendations(supplement_name)
-            }
-            
-            self.logger.info(f"Logged supplement: {supplement_name} {dosage}{unit}")
-            return result
-            
-        except Exception as e:
-            self.logger.error(f"Error logging supplement: {str(e)}")
-            return {"error": str(e)}
-    
-    def get_meal_timing_analysis(
-        self, 
-        user_id: str, 
-        days: int = 7
-    ) -> Dict[str, Any]:
-        """
-        Analyze meal timing patterns
-        
-        Args:
-            user_id: User identifier
-            days: Number of days to analyze
-            
-        Returns:
-            Meal timing analysis
-        """
-        try:
-            # Get recent entries
-            recent_entries = self._get_recent_entries(user_id, days)
-            
-            # Group by meal type and analyze timing
-            meal_times = {"breakfast": [], "lunch": [], "dinner": [], "snack": []}
-            
-            for entry in recent_entries:
-                meal_type = entry.meal_type
-                entry_time = datetime.fromisoformat(entry.timestamp.replace('Z', '+00:00'))
-                hour_minute = entry_time.strftime('%H:%M')
-                meal_times[meal_type].append(hour_minute)
-            
-            # Calculate timing patterns
-            timing_analysis = {
-                "meal_timing_patterns": {},
-                "consistency_scores": {},
-                "recommendations": []
-            }
-            
-            for meal_type, times in meal_times.items():
-                if times:
-                    # Calculate average timing and consistency
-                    avg_time, consistency = self._calculate_timing_stats(times)
-                    timing_analysis["meal_timing_patterns"][meal_type] = {
-                        "average_time": avg_time,
-                        "consistency_score": consistency,
-                        "frequency": len(times)
-                    }
-            
-            # Generate timing recommendations
-            timing_analysis["recommendations"] = self._generate_timing_recommendations(
-                timing_analysis["meal_timing_patterns"]
-            )
-            
-            return timing_analysis
-            
-        except Exception as e:
-            self.logger.error(f"Error analyzing meal timing: {str(e)}")
-            return {"error": str(e)}
-    
-    def _lookup_nutrition_data(
-        self, 
-        food_item: str, 
-        portion_size: float, 
-        unit: str
-    ) -> Dict[str, float]:
-        """Lookup nutrition data for a food item"""
-        # Normalize food item name
-        food_key = food_item.lower().replace(' ', '_')
-        
-        # Get base nutrition per 100g
-        base_nutrition = self.nutrition_database.get(food_key, {
-            'calories': 200, 'protein': 10, 'carbs': 25, 'fat': 8,
-            'fiber': 3, 'sugar': 5, 'sodium': 300
-        })
-        
-        # Calculate portion multiplier
-        portion_multiplier = self._calculate_portion_multiplier(portion_size, unit)
-        
-        # Scale nutrition data
-        scaled_nutrition = {}
-        for nutrient, value in base_nutrition.items():
-            scaled_nutrition[nutrient] = value * portion_multiplier
-        
-        return scaled_nutrition
-    
-    def _calculate_portion_multiplier(self, portion_size: float, unit: str) -> float:
-        """Calculate multiplier for portion size"""
-        # Base conversions to 100g equivalent
-        unit_conversions = {
-            'grams': 0.01,
-            'cups': 2.4,  # Approximate for mixed foods
-            'pieces': 0.5,
-            'tablespoons': 0.15,
-            'teaspoons': 0.05,
-            'ounces': 0.28
-        }
-        
-        return portion_size * unit_conversions.get(unit.lower(), 1.0)
-    
-    def _update_daily_summary(self, user_id: str, entry: NutritionEntry):
-        """Update daily summary with new entry"""
-        date = entry.timestamp[:10]  # Extract date part
-        summary_key = f"{user_id}_{date}"
-        
-        if summary_key not in self.daily_summaries:
-            self.daily_summaries[summary_key] = DailyNutritionSummary(
-                date=date, user_id=user_id,
-                total_calories=0, total_protein=0, total_carbs=0,
-                total_fat=0, total_fiber=0, total_sugar=0,
-                total_sodium=0, meals_logged=0, goal_adherence_score=0
-            )
-        
-        summary = self.daily_summaries[summary_key]
-        summary.total_calories += entry.calories
-        summary.total_protein += entry.protein
-        summary.total_carbs += entry.carbs
-        summary.total_fat += entry.fat
-        summary.total_fiber += entry.fiber
-        summary.total_sugar += entry.sugar
-        summary.total_sodium += entry.sodium
-        summary.meals_logged += 1
-    
-    def _get_entries_for_date(self, user_id: str, date: str) -> List[NutritionEntry]:
-        """Get all nutrition entries for a specific date"""
-        return [
-            entry for entry in self.nutrition_entries
-            if entry.user_id == user_id and entry.timestamp.startswith(date)
-        ]
-    
-    def _calculate_daily_summary(
-        self, 
-        user_id: str, 
-        date: str, 
-        entries: List[NutritionEntry]
-    ) -> DailyNutritionSummary:
-        """Calculate daily summary from entries"""
-        total_calories = sum(entry.calories for entry in entries)
-        total_protein = sum(entry.protein for entry in entries)
-        total_carbs = sum(entry.carbs for entry in entries)
-        total_fat = sum(entry.fat for entry in entries)
-        total_fiber = sum(entry.fiber for entry in entries)
-        total_sugar = sum(entry.sugar for entry in entries)
-        total_sodium = sum(entry.sodium for entry in entries)
-        
-        return DailyNutritionSummary(
-            date=date,
-            user_id=user_id,
-            total_calories=total_calories,
-            total_protein=total_protein,
-            total_carbs=total_carbs,
-            total_fat=total_fat,
-            total_fiber=total_fiber,
-            total_sugar=total_sugar,
-            total_sodium=total_sodium,
-            meals_logged=len(entries),
-            goal_adherence_score=self._calculate_goal_adherence(
-                total_calories, total_protein, total_carbs, total_fat
-            )
-        )
-    
-    def _calculate_nutrition_density(self, nutrition_data: Dict[str, float]) -> float:
-        """Calculate nutrition density score"""
-        calories = nutrition_data.get('calories', 1)
-        protein = nutrition_data.get('protein', 0)
-        fiber = nutrition_data.get('fiber', 0)
-        
-        if calories == 0:
-            return 0
-        
-        # Higher protein and fiber relative to calories = better density
-        density_score = ((protein * 4) + (fiber * 2)) / calories * 100
-        return min(100, density_score)
-    
-    def _calculate_meal_contribution(self, user_id: str, entry: NutritionEntry) -> Dict[str, float]:
-        """Calculate how much this entry contributes to daily goals"""
-        # Simplified daily goals
-        daily_goals = {
-            'calories': 2000,
-            'protein': 150,
-            'carbs': 250,
-            'fat': 67
-        }
-        
-        contribution = {}
-        for nutrient in ['calories', 'protein', 'carbs', 'fat']:
-            entry_value = getattr(entry, nutrient)
-            goal_value = daily_goals[nutrient]
-            contribution[f"{nutrient}_percentage"] = (entry_value / goal_value) * 100
-        
-        return contribution
-    
-    def _calculate_nutrient_trends(self, daily_data: List[DailyNutritionSummary]) -> Dict[str, str]:
-        """Calculate trends for each nutrient"""
-        trends = {}
-        
-        if len(daily_data) < 2:
-            return trends
-        
-        # Calculate simple trend direction
-        for nutrient in ['total_calories', 'total_protein', 'total_carbs', 'total_fat']:
-            values = [getattr(day, nutrient) for day in daily_data]
-            
-            # Simple trend calculation
-            first_half = sum(values[:len(values)//2]) / (len(values)//2)
-            second_half = sum(values[len(values)//2:]) / (len(values) - len(values)//2)
-            
-            if second_half > first_half * 1.1:
-                trends[nutrient] = "increasing"
-            elif second_half < first_half * 0.9:
-                trends[nutrient] = "decreasing"
+            # Protein analysis
+            protein_pct = day_nutrition.protein / targets['protein'] * 100
+            if protein_pct >= 90:
+                analyses.append("✅ Hit protein 🎯")
+            elif protein_pct >= 75:
+                analyses.append("🟡 Close on protein")
             else:
-                trends[nutrient] = "stable"
-        
-        return trends
-    
-    def _calculate_consistency_scores(self, daily_data: List[DailyNutritionSummary]) -> Dict[str, float]:
-        """Calculate consistency scores for nutrients"""
-        consistency = {}
-        
-        if len(daily_data) < 2:
-            return consistency
-        
-        for nutrient in ['total_calories', 'total_protein', 'total_carbs', 'total_fat']:
-            values = [getattr(day, nutrient) for day in daily_data]
+                analyses.append(f"🔴 Protein low ({day_nutrition.protein:.0f}g vs {targets['protein']:.0f}g goal)")
             
-            if values:
-                mean_value = sum(values) / len(values)
-                variance = sum((x - mean_value) ** 2 for x in values) / len(values)
-                coefficient_of_variation = (variance ** 0.5) / mean_value if mean_value > 0 else 1
+            # Fiber analysis
+            fiber_pct = day_nutrition.fiber / targets['fiber'] * 100
+            if fiber_pct >= 90:
+                analyses.append("✅ Great fiber!")
+            elif fiber_pct >= 70:
+                analyses.append(f"⚠️ Fiber a bit low vs {targets['fiber']:.0f}g goal")
+            else:
+                analyses.append(f"🔴 Need more fiber ({day_nutrition.fiber:.0f}g vs {targets['fiber']:.0f}g)")
+            
+            recap += "; ".join(analyses) + ".\n"
+            
+            # Add lifestyle factors if tracked
+            lifestyle = []
+            if day_nutrition.water_cups > 0:
+                lifestyle.append(f"Water: {day_nutrition.water_cups:.0f} cups")
+            if day_nutrition.steps:
+                lifestyle.append(f"Steps: ~{day_nutrition.steps/1000:.0f}k")
+            if day_nutrition.mood:
+                lifestyle.append(f"Mood: {day_nutrition.mood}")
+            if day_nutrition.energy:
+                lifestyle.append(f"Energy: {day_nutrition.energy}")
+            if day_nutrition.digestion:
+                lifestyle.append(f"Digestion: {day_nutrition.digestion}")
+            
+            if lifestyle:
+                recap += " | ".join(lifestyle)
+            
+            return recap
+            
+        except Exception as e:
+            logger.error(f"Error generating daily recap: {e}")
+            return "Had trouble with your daily recap - try asking again?"
+    
+    def generate_weekly_report(self, user_id: str, week_start: str = None) -> str:
+        """
+        Generate comprehensive weekly nutrition report
+        """
+        try:
+            if not week_start:
+                # Get Monday of current week
+                today = datetime.now()
+                days_since_monday = today.weekday()
+                week_start = (today - timedelta(days=days_since_monday)).strftime('%Y-%m-%d')
+            
+            # Get week's nutrition data
+            week_data = self._get_week_nutrition_data(user_id, week_start)
+            if not week_data:
+                return "Need a few more days of tracking to generate your weekly report! 📊"
+            
+            summary = self._calculate_week_summary(week_data, user_id)
+            
+            # Build report
+            report = f"**This week avg:** **{summary.avg_kcal:,.0f} kcal/d**, **{summary.avg_protein:.0f}g protein/d**, **{summary.avg_fiber:.0f}g fiber/d**, **{summary.avg_sodium:,.0f}mg sodium/d**\n\n"
+            
+            # Wins section
+            if summary.wins:
+                report += "**Wins:** " + ", ".join(summary.wins) + "\n\n"
+            
+            # Tweaks section
+            if summary.tweaks:
+                report += "**Tweaks:** " + ", ".join(summary.tweaks) + "\n\n"
+            
+            # Top meals
+            if summary.top_liked_meals:
+                meals_text = ", ".join([f"{meal['name']} ({meal['rating']}⭐)" for meal in summary.top_liked_meals])
+                report += f"**Highlights you loved:** {meals_text}\n\n"
+            
+            # Next week suggestions
+            suggestions = self._generate_next_week_suggestions(summary, user_id)
+            if suggestions:
+                report += f"**Next week plan:** {suggestions}"
+            
+            return report
+            
+        except Exception as e:
+            logger.error(f"Error generating weekly report: {e}")
+            return "Having trouble with your weekly report - try again later? 📊"
+    
+    def handle_stats_command(self, user_id: str, command: str) -> str:
+        """Handle on-demand nutrition commands"""
+        try:
+            command_lower = command.lower()
+            
+            if 'today' in command_lower:
+                return self.generate_daily_recap(user_id)
+            elif 'weekly' in command_lower or 'week' in command_lower:
+                return self.generate_weekly_report(user_id)
+            elif 'macro' in command_lower:
+                return self._generate_macro_breakdown(user_id)
+            elif 'fiber' in command_lower:
+                return self._generate_fiber_sources(user_id)
+            elif 'sodium' in command_lower:
+                return self._generate_sodium_swaps(user_id)
+            else:
+                return self.generate_daily_recap(user_id)
                 
-                # Convert to consistency score (lower variation = higher consistency)
-                consistency[nutrient] = max(0, 100 - (coefficient_of_variation * 100))
-        
-        return consistency
+        except Exception as e:
+            logger.error(f"Error handling stats command: {e}")
+            return "Which stats would you like? Try 'stats today' or 'weekly report'! 📊"
     
-    def _generate_trend_recommendations(self, trends: Dict[str, Any]) -> List[str]:
-        """Generate recommendations based on trends"""
-        recommendations = []
-        
-        # Check calorie trends
-        calorie_trend = trends.get("trends", {}).get("total_calories")
-        if calorie_trend == "decreasing":
-            recommendations.append("Consider increasing calorie intake to meet daily goals")
-        elif calorie_trend == "increasing":
-            recommendations.append("Monitor calorie intake to avoid exceeding daily targets")
-        
-        # Check protein trends
-        protein_trend = trends.get("trends", {}).get("total_protein")
-        if protein_trend == "decreasing":
-            recommendations.append("Include more protein-rich foods in your meals")
-        
-        # Check consistency
-        consistency_scores = trends.get("consistency_scores", {})
-        low_consistency = [k for k, v in consistency_scores.items() if v < 60]
-        if low_consistency:
-            recommendations.append(f"Try to be more consistent with: {', '.join(low_consistency)}")
-        
-        return recommendations
+    def get_adaptation_suggestions(self, user_id: str) -> List[str]:
+        """Get personalized adaptation suggestions based on recent data"""
+        try:
+            # Get recent nutrition data
+            recent_data = self._get_recent_nutrition_data(user_id, days=7)
+            if not recent_data:
+                return []
+            
+            suggestions = []
+            flags = self._analyze_user_flags(user_id, recent_data)
+            
+            # Protein adaptation
+            if flags.protein_below_target_days >= 3:
+                suggestions.append("Add 1 easy protein snack/day (Greek yogurt, edamame, tuna packet)")
+            
+            # Fiber adaptation
+            avg_fiber = sum(day.fiber for day in recent_data) / len(recent_data)
+            if avg_fiber < 25:
+                suggestions.append("Oats/berries breakfast 2×, legume lunch 2×, veg add-on at dinner")
+            
+            # Sodium adaptation
+            avg_sodium = sum(day.sodium for day in recent_data) / len(recent_data)
+            if avg_sodium > 2300:
+                suggestions.append("Swap canned for low-sodium, boost citrus/herbs/umami; cut 1 processed item")
+            
+            # Energy/mood adaptations
+            if flags.low_energy_streak >= 2:
+                suggestions.extend([
+                    "+15–25g protein earlier in the day",
+                    "Higher-fiber breakfast (oats/berries) to stabilize appetite",
+                    "Shift dinner lighter & earlier (time-restricted window)",
+                    "Hydration nudge: +2 cups water before 2pm"
+                ])
+            
+            return suggestions[:3]  # Limit to top 3 suggestions
+            
+        except Exception as e:
+            logger.error(f"Error getting adaptation suggestions: {e}")
+            return []
     
-    def _get_daily_hydration(self, user_id: str, date: str) -> float:
-        """Get daily hydration total (placeholder)"""
-        # This would query hydration entries from database
-        return 1200  # Placeholder value
+    # Helper methods
     
-    def _get_beverage_calories(self, beverage_type: str, amount_ml: float) -> float:
-        """Get calories for beverage"""
-        calorie_per_100ml = {
-            'water': 0,
-            'coffee': 2,
-            'tea': 1,
-            'juice': 45,
-            'soda': 42,
-            'milk': 42
-        }
-        
-        return (calorie_per_100ml.get(beverage_type.lower(), 0) * amount_ml) / 100
+    def _get_day_nutrition(self, user_id: str, date: str) -> DayNutrition:
+        """Get or create nutrition data for a specific day"""
+        try:
+            nutrition_data = self.user_service.get_user_data(user_id, f'nutrition_{date}')
+            if nutrition_data:
+                return DayNutrition(**nutrition_data)
+            else:
+                return DayNutrition(date=date)
+        except:
+            return DayNutrition(date=date)
     
-    def _get_supplement_nutrition(self, supplement_name: str, dosage: float) -> Dict[str, float]:
-        """Get nutrition contribution from supplement"""
-        # Simplified supplement nutrition database
-        supplement_data = {
-            'vitamin_d': {'vitamin_d': dosage},
-            'vitamin_c': {'vitamin_c': dosage},
-            'omega_3': {'omega_3': dosage},
-            'protein_powder': {'protein': dosage * 0.8, 'calories': dosage * 4}
-        }
-        
-        return supplement_data.get(supplement_name.lower(), {})
+    def _save_day_nutrition(self, user_id: str, day_nutrition: DayNutrition):
+        """Save nutrition data for a day"""
+        self.user_service.save_user_data(user_id, f'nutrition_{day_nutrition.date}', asdict(day_nutrition))
     
-    def _track_supplement_adherence(self, user_id: str, supplement_name: str) -> Dict[str, Any]:
-        """Track supplement adherence (placeholder)"""
-        return {
-            "daily_adherence": 85.0,
-            "weekly_adherence": 80.0,
-            "streak_days": 5
-        }
-    
-    def _get_supplement_recommendations(self, supplement_name: str) -> List[str]:
-        """Get recommendations for supplement"""
-        recommendations = {
-            'vitamin_d': ["Take with fatty meal for better absorption"],
-            'vitamin_c': ["Take away from iron supplements"],
-            'omega_3': ["Store in refrigerator", "Take with meals"]
-        }
+    def _get_meal_nutrition(self, meal_name: str, portion_multiplier: float = 1.0) -> Dict[str, float]:
+        """Get nutrition data for a meal (from recipe DB or estimation)"""
+        # Clean meal name for lookup
+        clean_name = meal_name.lower().replace(' ', '_').replace('-', '_')
         
-        return recommendations.get(supplement_name.lower(), [])
-    
-    def _get_recent_entries(self, user_id: str, days: int) -> List[NutritionEntry]:
-        """Get recent nutrition entries"""
-        cutoff_date = datetime.now() - timedelta(days=days)
-        cutoff_str = cutoff_date.isoformat()
-        
-        return [
-            entry for entry in self.nutrition_entries
-            if entry.user_id == user_id and entry.timestamp > cutoff_str
-        ]
-    
-    def _calculate_timing_stats(self, times: List[str]) -> Tuple[str, float]:
-        """Calculate average time and consistency for meal timing"""
-        if not times:
-            return "00:00", 0.0
-        
-        # Convert times to minutes for calculation
-        minutes = []
-        for time_str in times:
-            hour, minute = map(int, time_str.split(':'))
-            minutes.append(hour * 60 + minute)
-        
-        # Calculate average
-        avg_minutes = sum(minutes) / len(minutes)
-        avg_hour = int(avg_minutes // 60)
-        avg_minute = int(avg_minutes % 60)
-        avg_time = f"{avg_hour:02d}:{avg_minute:02d}"
-        
-        # Calculate consistency (lower variance = higher consistency)
-        if len(minutes) > 1:
-            variance = sum((m - avg_minutes) ** 2 for m in minutes) / len(minutes)
-            consistency = max(0, 100 - (variance ** 0.5) / 60 * 100)  # Scale to 0-100
+        if clean_name in self.recipe_nutrition_db:
+            nutrition = self.recipe_nutrition_db[clean_name].copy()
+            # Apply portion multiplier
+            for key, value in nutrition.items():
+                if isinstance(value, (int, float)):
+                    nutrition[key] = value * portion_multiplier
+            return nutrition
         else:
-            consistency = 100.0
-        
-        return avg_time, consistency
+            # Fallback estimation (would be more sophisticated in real implementation)
+            return {
+                'kcal': 400 * portion_multiplier,
+                'protein': 25 * portion_multiplier,
+                'carbs': 35 * portion_multiplier,
+                'fat': 15 * portion_multiplier,
+                'fiber': 8 * portion_multiplier,
+                'sodium': 600 * portion_multiplier
+            }
     
-    def _generate_timing_recommendations(self, patterns: Dict[str, Any]) -> List[str]:
-        """Generate meal timing recommendations"""
-        recommendations = []
-        
-        for meal_type, data in patterns.items():
-            consistency = data.get('consistency_score', 0)
-            if consistency < 70:
-                recommendations.append(f"Try to eat {meal_type} at more consistent times")
-        
-        # Check for missing meals
-        if 'breakfast' not in patterns:
-            recommendations.append("Consider adding breakfast to your routine")
-        
-        return recommendations
+    def _add_nutrition_to_day(self, day_nutrition: DayNutrition, nutrition: Dict[str, float]):
+        """Add nutrition values to daily totals"""
+        day_nutrition.kcal += nutrition.get('kcal', 0)
+        day_nutrition.protein += nutrition.get('protein', 0)
+        day_nutrition.carbs += nutrition.get('carbs', 0)
+        day_nutrition.fat += nutrition.get('fat', 0)
+        day_nutrition.fiber += nutrition.get('fiber', 0)
+        day_nutrition.sodium += nutrition.get('sodium', 0)
+        day_nutrition.sugar_added += nutrition.get('sugar_added', 0)
     
-    def _calculate_goal_adherence(
-        self, 
-        calories: float, 
-        protein: float, 
-        carbs: float, 
-        fat: float
-    ) -> float:
-        """Calculate goal adherence score"""
-        # Simplified goal adherence calculation
-        goals = {'calories': 2000, 'protein': 150, 'carbs': 250, 'fat': 67}
-        
-        adherence_scores = []
-        for nutrient, goal in goals.items():
-            actual = locals()[nutrient]
-            # Calculate how close to goal (penalty for being too far over or under)
-            ratio = actual / goal if goal > 0 else 0
-            if 0.8 <= ratio <= 1.2:  # Within 20% of goal
-                score = 100
-            elif 0.6 <= ratio <= 1.4:  # Within 40% of goal
-                score = 75
-            else:
-                score = 50
-            adherence_scores.append(score)
-        
-        return sum(adherence_scores) / len(adherence_scores) if adherence_scores else 0
-    
-    def _initialize_nutrition_database(self) -> Dict[str, Dict[str, float]]:
-        """Initialize nutrition database with common foods"""
+    def _get_nutrition_summary(self, day_nutrition: DayNutrition) -> Dict[str, float]:
+        """Get current day's nutrition summary"""
         return {
-            # Proteins
-            'chicken_breast': {'calories': 165, 'protein': 31, 'carbs': 0, 'fat': 3.6, 'fiber': 0, 'sugar': 0, 'sodium': 74},
-            'salmon': {'calories': 208, 'protein': 22, 'carbs': 0, 'fat': 12, 'fiber': 0, 'sugar': 0, 'sodium': 59},
-            'eggs': {'calories': 155, 'protein': 13, 'carbs': 1.1, 'fat': 11, 'fiber': 0, 'sugar': 1.1, 'sodium': 124},
-            'tofu': {'calories': 76, 'protein': 8, 'carbs': 1.9, 'fat': 4.8, 'fiber': 0.3, 'sugar': 0.6, 'sodium': 7},
-            
-            # Carbohydrates
-            'brown_rice': {'calories': 111, 'protein': 2.6, 'carbs': 23, 'fat': 0.9, 'fiber': 1.8, 'sugar': 0.4, 'sodium': 5},
-            'quinoa': {'calories': 120, 'protein': 4.4, 'carbs': 22, 'fat': 1.9, 'fiber': 2.8, 'sugar': 0.9, 'sodium': 7},
-            'oatmeal': {'calories': 68, 'protein': 2.4, 'carbs': 12, 'fat': 1.4, 'fiber': 1.7, 'sugar': 0.3, 'sodium': 49},
-            'sweet_potato': {'calories': 86, 'protein': 1.6, 'carbs': 20, 'fat': 0.1, 'fiber': 3, 'sugar': 4.2, 'sodium': 7},
-            
-            # Vegetables
-            'broccoli': {'calories': 34, 'protein': 2.8, 'carbs': 7, 'fat': 0.4, 'fiber': 2.6, 'sugar': 1.5, 'sodium': 33},
-            'spinach': {'calories': 23, 'protein': 2.9, 'carbs': 3.6, 'fat': 0.4, 'fiber': 2.2, 'sugar': 0.4, 'sodium': 79},
-            'carrots': {'calories': 41, 'protein': 0.9, 'carbs': 10, 'fat': 0.2, 'fiber': 2.8, 'sugar': 4.7, 'sodium': 69},
-            'bell_peppers': {'calories': 31, 'protein': 1, 'carbs': 7, 'fat': 0.3, 'fiber': 2.5, 'sugar': 4.2, 'sodium': 4},
-            
-            # Fruits
-            'apple': {'calories': 52, 'protein': 0.3, 'carbs': 14, 'fat': 0.2, 'fiber': 2.4, 'sugar': 10, 'sodium': 1},
-            'banana': {'calories': 89, 'protein': 1.1, 'carbs': 23, 'fat': 0.3, 'fiber': 2.6, 'sugar': 12, 'sodium': 1},
-            'berries': {'calories': 57, 'protein': 0.7, 'carbs': 14, 'fat': 0.3, 'fiber': 2.4, 'sugar': 10, 'sodium': 1},
-            
-            # Nuts and seeds
-            'almonds': {'calories': 579, 'protein': 21, 'carbs': 22, 'fat': 50, 'fiber': 12, 'sugar': 4.3, 'sodium': 1},
-            'walnuts': {'calories': 654, 'protein': 15, 'carbs': 14, 'fat': 65, 'fiber': 6.7, 'sugar': 2.6, 'sodium': 2},
-            'chia_seeds': {'calories': 486, 'protein': 17, 'carbs': 42, 'fat': 31, 'fiber': 34, 'sugar': 0, 'sodium': 16}
+            'kcal': day_nutrition.kcal,
+            'protein': day_nutrition.protein,
+            'fiber': day_nutrition.fiber,
+            'sodium': day_nutrition.sodium,
+            'water': day_nutrition.water_cups
         }
+    
+    def _get_user_targets(self, user_id: str) -> Dict[str, float]:
+        """Get personalized nutrition targets for user"""
+        user_profile = self.user_service.get_user_profile(user_id)
+        
+        # Start with defaults and personalize based on profile
+        targets = self.default_targets.copy()
+        
+        # Adjust based on user profile (simplified)
+        if user_profile:
+            height = user_profile.get('height')
+            weight = user_profile.get('weight')
+            activity_level = user_profile.get('activity_level', 'moderate')
+            
+            # Basic adjustments (would be more sophisticated)
+            if weight and weight > 180:
+                targets['protein'] = 140
+                targets['kcal'] = 2200
+            elif weight and weight < 140:
+                targets['protein'] = 100
+                targets['kcal'] = 1800
+        
+        return targets
+    
+    def _check_feeling_adaptations(self, user_id: str, day_nutrition: DayNutrition) -> Optional[str]:
+        """Check if feelings trigger any immediate adaptations"""
+        # Get recent feelings to detect patterns
+        recent_days = self._get_recent_nutrition_data(user_id, days=3)
+        if len(recent_days) < 2:
+            return None
+        
+        # Check for low energy streak
+        low_energy_count = sum(1 for day in recent_days[-2:] if day.energy == '💤')
+        if low_energy_count >= 2:
+            return "I noticed energy's been low. Want to try adding +15-25g protein earlier in the day? 💪"
+        
+        # Check for good streak
+        good_mood_count = sum(1 for day in recent_days[-3:] if day.mood in ['🙂', '😄'])
+        if good_mood_count >= 2:
+            return "Nice streak! Keep current timing and repeat your top dinners next week? 🌟"
+        
+        return None
+    
+    def _get_week_nutrition_data(self, user_id: str, week_start: str) -> List[DayNutrition]:
+        """Get nutrition data for a week"""
+        week_data = []
+        start_date = datetime.strptime(week_start, '%Y-%m-%d')
+        
+        for i in range(7):
+            date = (start_date + timedelta(days=i)).strftime('%Y-%m-%d')
+            day_nutrition = self._get_day_nutrition(user_id, date)
+            if day_nutrition.kcal > 0:  # Only include days with data
+                week_data.append(day_nutrition)
+        
+        return week_data
+    
+    def _calculate_week_summary(self, week_data: List[DayNutrition], user_id: str) -> WeekSummary:
+        """Calculate weekly summary from daily data"""
+        if not week_data:
+            return WeekSummary(week_start='', avg_kcal=0, avg_protein=0, avg_carbs=0, 
+                             avg_fat=0, avg_fiber=0, avg_sodium=0, avg_sugar_added=0, avg_water=0)
+        
+        days = len(week_data)
+        targets = self._get_user_targets(user_id)
+        
+        summary = WeekSummary(
+            week_start=week_data[0].date,
+            avg_kcal=sum(day.kcal for day in week_data) / days,
+            avg_protein=sum(day.protein for day in week_data) / days,
+            avg_carbs=sum(day.carbs for day in week_data) / days,
+            avg_fat=sum(day.fat for day in week_data) / days,
+            avg_fiber=sum(day.fiber for day in week_data) / days,
+            avg_sodium=sum(day.sodium for day in week_data) / days,
+            avg_sugar_added=sum(day.sugar_added for day in week_data) / days,
+            avg_water=sum(day.water_cups for day in week_data) / days
+        )
+        
+        # Calculate wins and tweaks
+        summary.protein_delta = summary.avg_protein - targets['protein']
+        summary.fiber_delta = summary.avg_fiber - targets['fiber']
+        
+        if summary.protein_delta > 5:
+            summary.wins.append(f"+{summary.protein_delta:.0f}g protein over goal")
+        if summary.avg_fiber >= targets['fiber']:
+            summary.wins.append("hit fiber targets")
+        if summary.avg_sodium <= targets['sodium']:
+            summary.wins.append("great sodium control")
+        
+        # Generate tweaks
+        if summary.avg_fiber < targets['fiber']:
+            summary.tweaks.append(f"Fiber +{targets['fiber'] - summary.avg_fiber:.0f}g/day")
+        if summary.avg_sodium > targets['sodium']:
+            summary.tweaks.append("reduce added sodium")
+        
+        return summary
+    
+    def _generate_next_week_suggestions(self, summary: WeekSummary, user_id: str) -> str:
+        """Generate suggestions for next week based on this week's data"""
+        suggestions = []
+        
+        if summary.protein_delta > 0:
+            suggestions.append("keep protein")
+        if summary.avg_fiber < 30:
+            suggestions.append("add berries/oats breakfast 2×")
+        if summary.avg_sodium > 2000:
+            suggestions.append("swap one dessert for fruit + yogurt")
+        
+        return "; ".join(suggestions) + "."
+    
+    def _get_recent_nutrition_data(self, user_id: str, days: int = 7) -> List[DayNutrition]:
+        """Get recent nutrition data for analysis"""
+        recent_data = []
+        
+        for i in range(days):
+            date = (datetime.now() - timedelta(days=i)).strftime('%Y-%m-%d')
+            day_nutrition = self._get_day_nutrition(user_id, date)
+            if day_nutrition.kcal > 0:
+                recent_data.append(day_nutrition)
+        
+        return recent_data
+    
+    def _analyze_user_flags(self, user_id: str, recent_data: List[DayNutrition]) -> UserFlags:
+        """Analyze recent data to set user flags for adaptations"""
+        flags = UserFlags()
+        targets = self._get_user_targets(user_id)
+        
+        # Count consecutive low energy days
+        for day in reversed(recent_data[-7:]):
+            if day.energy == '💤':
+                flags.low_energy_streak += 1
+            else:
+                break
+        
+        # Count protein below target days
+        flags.protein_below_target_days = sum(
+            1 for day in recent_data if day.protein < targets['protein'] * 0.8
+        )
+        
+        # Check for good streak
+        for day in reversed(recent_data[-3:]):
+            if day.mood in ['🙂', '😄'] and day.energy == '⚡':
+                flags.good_streak += 1
+            else:
+                break
+        
+        return flags
+    
+    def _generate_macro_breakdown(self, user_id: str) -> str:
+        """Generate detailed macro breakdown for today"""
+        today = datetime.now().strftime('%Y-%m-%d')
+        day_nutrition = self._get_day_nutrition(user_id, today)
+        
+        if day_nutrition.kcal == 0:
+            return "No meals tracked today yet. Start logging to see your macro breakdown! 📊"
+        
+        # Calculate percentages
+        total_kcal = day_nutrition.kcal
+        protein_kcal = day_nutrition.protein * 4
+        carb_kcal = day_nutrition.carbs * 4
+        fat_kcal = day_nutrition.fat * 9
+        
+        protein_pct = (protein_kcal / total_kcal * 100) if total_kcal > 0 else 0
+        carb_pct = (carb_kcal / total_kcal * 100) if total_kcal > 0 else 0
+        fat_pct = (fat_kcal / total_kcal * 100) if total_kcal > 0 else 0
+        
+        return f"""**Today's Macro Breakdown:**
+🥩 Protein: {day_nutrition.protein:.0f}g ({protein_pct:.0f}%)
+🍞 Carbs: {day_nutrition.carbs:.0f}g ({carb_pct:.0f}%)
+🥑 Fat: {day_nutrition.fat:.0f}g ({fat_pct:.0f}%)
+🌾 Fiber: {day_nutrition.fiber:.0f}g
+🧂 Sodium: {day_nutrition.sodium:,.0f}mg
+💧 Water: {day_nutrition.water_cups:.1f} cups"""
+    
+    def _generate_fiber_sources(self, user_id: str) -> str:
+        """Suggest fiber sources based on user preferences"""
+        return """**Great Fiber Sources:**
+🥣 Breakfast: Oats with berries (+8g)
+🥗 Lunch: Add chickpeas or lentils (+7g)
+🥕 Snacks: Apple with skin (+4g)
+🍽️ Dinner: Extra vegetables (+3-5g)
+🌰 Easy add: 1 tbsp chia seeds (+5g)
+
+Aim for 30-35g total daily! 🎯"""
+    
+    def _generate_sodium_swaps(self, user_id: str) -> str:
+        """Suggest low-sodium swaps"""
+        return """**Low-Sodium Swaps:**
+🥫 Canned → Low-sodium or rinse before use
+🧂 Salt → Herbs, lemon, garlic, umami paste
+🍞 Regular bread → Lower sodium options
+🧀 Processed cheese → Fresh mozzarella
+🥩 Deli meat → Fresh cooked proteins
+🥗 Dressing → Olive oil + vinegar + herbs
+
+Target: Under 2,000mg daily! 🎯"""

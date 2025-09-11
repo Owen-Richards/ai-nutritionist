@@ -2,20 +2,20 @@
 Personalization Domain Package
 
 This package contains all personalization-related services:
-- preferences.py: User preferences and customization
-- recommendations.py: Personalized recommendations engine
-- learning.py: Machine learning and adaptation
-- profiles.py: User profile management
+- preferences.py: User preferences and customization (UserService)
+- behavior.py: User linking and family sharing (UserLinkingService) 
+- learning.py: Seamless profiling and adaptation (SeamlessUserProfileService)
+- goals.py: Personal goal management
 """
 
-from .preferences import PreferencesManager
-from .recommendations import RecommendationsEngine
-from .learning import LearningService
-from .profiles import ProfileManager
+from .preferences import UserService as UserPreferencesService
+from .behavior import UserLinkingService as UserBehaviorService
+from .learning import SeamlessUserProfileService as UserLearningService
+from .goals import HealthGoalsService as PersonalGoalsManager
 
 __all__ = [
-    'PreferencesManager',
-    'RecommendationsEngine', 
-    'LearningService',
-    'ProfileManager'
+    'UserPreferencesService',
+    'UserBehaviorService', 
+    'UserLearningService',
+    'PersonalGoalsManager'
 ]

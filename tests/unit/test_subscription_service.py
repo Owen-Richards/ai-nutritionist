@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 import boto3
 from moto import mock_aws
 
-from src.services.subscription_service import SubscriptionService, get_subscription_service
+from src.services.business.subscription import SubscriptionService
 
 
 @mock_aws
@@ -206,7 +206,7 @@ class TestSubscriptionService:
 def test_get_subscription_service():
     """Test factory function"""
     with patch('boto3.resource'), patch('boto3.client'):
-        service = get_subscription_service()
+        service = SubscriptionService()
         assert isinstance(service, SubscriptionService)
 
 

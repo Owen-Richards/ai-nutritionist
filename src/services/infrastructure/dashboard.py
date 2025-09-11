@@ -10,10 +10,10 @@ from typing import Dict, List, Any, Optional
 import boto3
 
 # Import our enhancement services
-from .performance_monitoring_service import PerformanceMonitoringService
-from .advanced_caching_service import AdvancedCachingService
-from .error_recovery_service import ErrorRecoveryService
-from .enhanced_user_experience_service import EnhancedUserExperienceService
+from .monitoring import PerformanceMonitoringService
+from .caching import AdvancedCachingService
+from .resilience import ErrorRecoveryService
+from .experience import EnhancedUserExperienceService
 
 logger = logging.getLogger(__name__)
 

@@ -8,8 +8,8 @@ import json
 from datetime import datetime
 from decimal import Decimal
 from typing import Dict, List, Optional, Tuple
-from .user_cost_tracker import UserCostTracker
-from .affiliate_revenue_service import AffiliateRevenueService
+from .cost_tracking import UserCostTracker
+from .revenue import AffiliateRevenueService
 
 class ProfitEnforcementService:
     def __init__(self):

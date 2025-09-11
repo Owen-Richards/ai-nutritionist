@@ -2,20 +2,35 @@
 Business Domain Package
 
 This package contains all business logic and revenue services:
-- revenue.py: Revenue tracking and optimization
-- billing.py: Billing and subscription management
-- analytics.py: Business analytics and metrics
-- monetization.py: Monetization strategies and upsells
+- subscription.py: Subscription management and billing (SubscriptionService)
+- revenue.py: Affiliate revenue optimization (AffiliateRevenueService)
+- compliance.py: Premium features and compliance (PremiumFeaturesService)
+- partnerships.py: Grocery partnerships (AffiliateGroceryService)
+- cost_tracking.py: User cost monitoring (UserCostTracker)
+- profit_enforcement.py: Profit enforcement (ProfitEnforcementService)
+- profit_guarantee.py: Guaranteed profit service (ProfitEnforcementService)
+- brand_endorsement.py: Brand partnerships (BrandEndorsementService)
+- revenue_integration.py: Revenue integration (RevenueIntegrationHandler)
 """
 
-from .revenue import RevenueService
-from .billing import BillingService
-from .analytics import AnalyticsService
-from .monetization import MonetizationService
+from .subscription import SubscriptionService
+from .revenue import AffiliateRevenueService as RevenueOptimizationService
+from .compliance import PremiumFeaturesService as ComplianceSecurityService
+from .partnerships import AffiliateGroceryService as PartnershipService
+from .cost_tracking import UserCostTracker
+from .profit_enforcement import ProfitEnforcementService
+from .profit_guarantee import ProfitEnforcementService as ProfitGuaranteeService
+from .brand_endorsement import BrandEndorsementService
+from .revenue_integration import RevenueIntegrationHandler
 
 __all__ = [
-    'RevenueService',
-    'BillingService',
-    'AnalyticsService',
-    'MonetizationService'
+    'SubscriptionService',
+    'RevenueOptimizationService',
+    'ComplianceSecurityService',
+    'PartnershipService',
+    'UserCostTracker',
+    'ProfitEnforcementService',
+    'ProfitGuaranteeService',
+    'BrandEndorsementService',
+    'RevenueIntegrationHandler'
 ]

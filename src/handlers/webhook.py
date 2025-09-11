@@ -20,11 +20,11 @@ from botocore.exceptions import ClientError
 from ..config.settings import get_settings
 from ..config.constants import ERROR_MESSAGES, SUCCESS_MESSAGES
 from ..models.user import UserProfile
-from ..services.messaging_service import ConsolidatedMessagingService
-from ..services.user_service import UserService
-from ..services.consolidated_ai_nutrition_service import ConsolidatedAINutritionService
-from ..services.meal_plan_service import MealPlanningService
-from ..services.subscription_service import SubscriptionService
+from ..services.messaging.sms import SMSCommunicationService
+from ..services.personalization.preferences import UserPreferencesService
+from ..services.nutrition.insights import NutritionInsights
+from ..services.meal_planning.planner import MealPlanningService
+from ..services.business.subscription import SubscriptionService
 
 # Configure logging
 logger = logging.getLogger()
@@ -36,12 +36,18 @@ settings = get_settings()
 # Initialize AWS clients
 dynamodb = boto3.resource('dynamodb', region_name=settings.aws.region)
 
-# Initialize services
-messaging_service = ConsolidatedMessagingService()
-user_service = UserService(dynamodb)
-consolidated_ai_service = ConsolidatedAINutritionService()
-meal_planning_service = MealPlanningService(dynamodb, consolidated_ai_service)
-subscription_service = SubscriptionService(dynamodb)
+# Initialize new domain services with correct class names
+sms_communication_service = SMSCommunicationService()
+user_preferences_service = UserPreferencesService(dynamodb)
+nutrition_insights_service = NutritionInsights()
+meal_planning_service = MealPlanningService(dynamodb, nutrition_insights_service)
+subscription_service = SubscriptionService()
+
+# Compatibility aliases for existing code
+messaging_service = sms_communication_service
+user_service = user_preferences_service
+consolidated_ai_service = nutrition_insights_service
+ai_service = nutrition_insights_service
 
 
 def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:

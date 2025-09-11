@@ -9,10 +9,10 @@ import logging
 from typing import Dict, Any, List, Optional
 from dataclasses import asdict
 
-from .multi_goal_service import MultiGoalService, GoalType
-from .multi_goal_meal_planner import MultiGoalMealPlanGenerator
-from .nutrition_messaging_service import NutritionMessagingService
-from .user_service import UserService
+from ..meal_planning.constraints import MultiGoalService, GoalType
+from ..meal_planning.variety import MultiGoalMealPlanGenerator
+from ..messaging.templates import NutritionMessagingService
+from .preferences import UserService
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ class MultiGoalNutritionHandler:
         self.meal_planner = MultiGoalMealPlanGenerator(ai_service, self.multi_goal_service)
         
         # Assume nutrition_tracking_service exists
-        from .nutrition_tracking_service import NutritionTrackingService
+        from ..nutrition.tracker import NutritionTrackingService
         self.nutrition_tracking = NutritionTrackingService(self.user_service, ai_service)
         
         self.messaging_service = NutritionMessagingService(

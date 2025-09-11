@@ -1,1086 +1,471 @@
 """
-Notification Management Service
-
-Handles intelligent notification scheduling, delivery optimization, and user
-engagement management with respect for user preferences and behavior patterns.
-
-Consolidates functionality from:
-- notification_service.py
-- engagement_optimization_service.py
+AWS End User Messaging Service
+Handles both SMS and WhatsApp messaging through AWS native APIs
 """
 
-from typing import Dict, List, Optional, Any, Tuple, Set
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from enum import Enum
 import json
 import logging
-import uuid
-from collections import defaultdict
-import statistics
+import os
+import boto3
+from typing import Dict, Any, Optional, List
+from datetime import datetime
+from botocore.exceptions import ClientError
 
 logger = logging.getLogger(__name__)
 
 
-class NotificationType(Enum):
-    """Types of notifications."""
-    MEAL_REMINDER = "meal_reminder"
-    GOAL_UPDATE = "goal_update"
-    WEEKLY_SUMMARY = "weekly_summary"
-    MOTIVATIONAL = "motivational"
-    EDUCATIONAL = "educational"
-    SYSTEM_ALERT = "system_alert"
-    PROMOTIONAL = "promotional"
-    FEEDBACK_REQUEST = "feedback_request"
-    ACHIEVEMENT = "achievement"
-    CHECK_IN = "check_in"
-
-
-class NotificationPriority(Enum):
-    """Priority levels for notifications."""
-    LOW = 1
-    NORMAL = 2
-    HIGH = 3
-    URGENT = 4
-
-
-class NotificationStatus(Enum):
-    """Status of notifications."""
-    SCHEDULED = "scheduled"
-    SENT = "sent"
-    DELIVERED = "delivered"
-    READ = "read"
-    CLICKED = "clicked"
-    DISMISSED = "dismissed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
-
-
-class DeliveryChannel(Enum):
-    """Available delivery channels."""
-    SMS = "sms"
-    EMAIL = "email"
-    PUSH = "push"
-    IN_APP = "in_app"
-    WEBHOOK = "webhook"
-
-
-@dataclass
-class NotificationPreferences:
-    """User's notification preferences."""
-    user_id: str
-    enabled_types: Set[NotificationType]
-    quiet_hours: Tuple[int, int]  # (start_hour, end_hour)
-    preferred_channels: Dict[NotificationType, List[DeliveryChannel]]
-    frequency_limits: Dict[str, int]  # daily, weekly limits
-    timezone: str
-    language: str = "en"
-    last_updated: datetime = field(default_factory=datetime.utcnow)
-
-
-@dataclass
-class NotificationSchedule:
-    """Scheduled notification definition."""
-    schedule_id: str
-    user_id: str
-    notification_type: NotificationType
-    title: str
-    content: str
-    priority: NotificationPriority
-    delivery_channel: DeliveryChannel
-    scheduled_time: datetime
-    created_time: datetime
-    expires_at: Optional[datetime] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    template_id: Optional[str] = None
-    personalization_data: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class NotificationDelivery:
-    """Notification delivery record."""
-    delivery_id: str
-    schedule_id: str
-    user_id: str
-    notification_type: NotificationType
-    status: NotificationStatus
-    delivery_channel: DeliveryChannel
-    sent_at: Optional[datetime] = None
-    delivered_at: Optional[datetime] = None
-    read_at: Optional[datetime] = None
-    clicked_at: Optional[datetime] = None
-    failed_at: Optional[datetime] = None
-    failure_reason: Optional[str] = None
-    engagement_score: Optional[float] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
-
-
-@dataclass
-class EngagementMetrics:
-    """User engagement metrics for optimization."""
-    user_id: str
-    total_sent: int
-    total_delivered: int
-    total_read: int
-    total_clicked: int
-    delivery_rate: float
-    read_rate: float
-    click_rate: float
-    optimal_times: List[int]  # Hours of day
-    preferred_frequency: int  # Per week
-    engagement_trend: str  # increasing, stable, decreasing
-    last_engagement: datetime
-    calculated_at: datetime = field(default_factory=datetime.utcnow)
-
-
-@dataclass
-class OptimizationRecommendation:
-    """Recommendation for notification optimization."""
-    user_id: str
-    recommendation_type: str
-    description: str
-    expected_improvement: float
-    confidence: float
-    implementation_difficulty: str
-    suggested_actions: List[str]
-    created_at: datetime = field(default_factory=datetime.utcnow)
-
-
-class NotificationManagementService:
-    """
-    Advanced notification management service with intelligent optimization.
+class AWSMessagingService:
+    """Service for sending SMS and WhatsApp messages via AWS End User Messaging"""
     
-    Features:
-    - Intelligent scheduling based on user behavior patterns
-    - Multi-channel delivery optimization and fallback handling
-    - Frequency capping and engagement-based throttling
-    - Personalized quiet hours and preference management
-    - A/B testing framework for notification optimization
-    - Real-time engagement tracking and adaptation
-    - Predictive analytics for optimal timing and content
-    """
-
     def __init__(self):
-        self.user_preferences: Dict[str, NotificationPreferences] = {}
-        self.scheduled_notifications: Dict[str, NotificationSchedule] = {}
-        self.delivery_records: Dict[str, List[NotificationDelivery]] = defaultdict(list)
-        self.engagement_metrics: Dict[str, EngagementMetrics] = {}
-        self.optimization_cache: Dict[str, List[OptimizationRecommendation]] = defaultdict(list)
+        self.sms_client = boto3.client('pinpoint-sms-voice-v2')
+        self.whatsapp_client = boto3.client('pinpoint')  # For WhatsApp via Pinpoint
+        self.ssm = boto3.client('ssm')
+        self.sqs = boto3.client('sqs')
         
-        # Initialize default configurations
-        self.default_preferences = self._initialize_default_preferences()
-        self.channel_reliability = self._initialize_channel_reliability()
+        # Get configuration from environment variables
+        self.phone_pool_id = os.getenv('PHONE_POOL_ID')
+        self.configuration_set = os.getenv('SMS_CONFIG_SET')
+        self.whatsapp_application_id = os.getenv('WHATSAPP_APPLICATION_ID')  # New for WhatsApp
+        self.environment = os.getenv('ENVIRONMENT', 'dev')
+        self._origination_number = None
+        self._whatsapp_number = None
+        
+        # International messaging support
+        self.COUNTRY_CONFIGS = {
+            'US': {'currency': 'USD', 'language': 'en', 'measurement': 'imperial', 'timezone': 'America/New_York'},
+            'UK': {'currency': 'GBP', 'language': 'en', 'measurement': 'metric', 'timezone': 'Europe/London'},
+            'AU': {'currency': 'AUD', 'language': 'en', 'measurement': 'metric', 'timezone': 'Australia/Sydney'},
+            'CA': {'currency': 'CAD', 'language': 'en', 'measurement': 'metric', 'timezone': 'America/Toronto'},
+            'IN': {'currency': 'INR', 'language': 'en', 'measurement': 'metric', 'timezone': 'Asia/Kolkata'},
+            'BR': {'currency': 'BRL', 'language': 'pt', 'measurement': 'metric', 'timezone': 'America/Sao_Paulo'},
+            'DE': {'currency': 'EUR', 'language': 'de', 'measurement': 'metric', 'timezone': 'Europe/Berlin'},
+            'FR': {'currency': 'EUR', 'language': 'fr', 'measurement': 'metric', 'timezone': 'Europe/Paris'},
+            'JP': {'currency': 'JPY', 'language': 'ja', 'measurement': 'metric', 'timezone': 'Asia/Tokyo'},
+            'SG': {'currency': 'SGD', 'language': 'en', 'measurement': 'metric', 'timezone': 'Asia/Singapore'}
+        }
 
-    def schedule_notification(
-        self,
-        user_id: str,
-        notification_type: str,
-        title: str,
-        content: str,
-        delivery_time: Optional[datetime] = None,
-        priority: str = "normal",
-        channel: Optional[str] = None,
-        template_id: Optional[str] = None,
-        personalization_data: Optional[Dict[str, Any]] = None,
-        metadata: Optional[Dict[str, Any]] = None
-    ) -> Tuple[bool, str, Optional[str]]:
+    def send_whatsapp_message(self, to_number: str, message: str, country_code: str = None) -> Dict[str, Any]:
         """
-        Schedule intelligent notification with optimization and preference checking.
+        Send WhatsApp message using AWS End User Messaging (Pinpoint)
         
         Args:
-            user_id: User identifier
-            notification_type: Type of notification
-            title: Notification title
-            content: Notification content
-            delivery_time: When to deliver (None for immediate)
-            priority: Priority level
-            channel: Preferred delivery channel
-            template_id: Optional template identifier
-            personalization_data: Data for personalization
-            metadata: Additional metadata
+            to_number: Phone number in international format (+1234567890)
+            message: Message text
+            country_code: Optional country code for localization
             
         Returns:
-            Tuple of (success, schedule_id, error_message)
+            Dict with success status and message ID
         """
         try:
-            # Parse enums
-            notif_type = NotificationType(notification_type.lower())
-            priority_enum = NotificationPriority[priority.upper()]
+            # Validate and format phone number
+            formatted_number = self._format_international_number(to_number)
+            if not formatted_number:
+                return {'success': False, 'error': f'Invalid phone number format: {to_number}'}
             
-            # Get user preferences
-            preferences = self._get_user_preferences(user_id)
+            # Get WhatsApp origination number
+            whatsapp_number = self._get_whatsapp_number()
+            if not whatsapp_number:
+                return {'success': False, 'error': 'No WhatsApp number configured'}
             
-            # Check if user has this notification type enabled
-            if notif_type not in preferences.enabled_types:
-                return False, "", f"User has disabled {notification_type} notifications"
-            
-            # Determine optimal delivery channel
-            if channel:
-                delivery_channel = DeliveryChannel(channel.lower())
-            else:
-                delivery_channel = self._select_optimal_channel(user_id, notif_type, priority_enum)
-            
-            # Optimize delivery time
-            if delivery_time is None:
-                delivery_time = datetime.utcnow()
-            
-            optimized_time = self._optimize_delivery_time(user_id, notif_type, delivery_time, preferences)
-            
-            # Check frequency limits
-            if not self._check_frequency_limits(user_id, notif_type, preferences):
-                return False, "", "Frequency limit exceeded for this notification type"
-            
-            # Generate schedule ID
-            schedule_id = str(uuid.uuid4())
-            
-            # Create notification schedule
-            schedule = NotificationSchedule(
-                schedule_id=schedule_id,
-                user_id=user_id,
-                notification_type=notif_type,
-                title=title,
-                content=content,
-                priority=priority_enum,
-                delivery_channel=delivery_channel,
-                scheduled_time=optimized_time,
-                created_time=datetime.utcnow(),
-                template_id=template_id,
-                personalization_data=personalization_data or {},
-                metadata=metadata or {}
-            )
-            
-            # Set expiration for non-urgent notifications
-            if priority_enum != NotificationPriority.URGENT:
-                schedule.expires_at = optimized_time + timedelta(hours=24)
-            
-            # Store schedule
-            self.scheduled_notifications[schedule_id] = schedule
-            
-            logger.info(f"Scheduled notification {schedule_id} for user {user_id} at {optimized_time}")
-            return True, schedule_id, None
-            
-        except Exception as e:
-            logger.error(f"Error scheduling notification: {e}")
-            return False, "", str(e)
-
-    def send_notification(self, schedule_id: str) -> Tuple[bool, Optional[str]]:
-        """
-        Send scheduled notification with delivery tracking.
-        
-        Args:
-            schedule_id: Scheduled notification identifier
-            
-        Returns:
-            Tuple of (success, delivery_id)
-        """
-        try:
-            schedule = self.scheduled_notifications.get(schedule_id)
-            if not schedule:
-                return False, None
-            
-            # Check if notification has expired
-            if schedule.expires_at and datetime.utcnow() > schedule.expires_at:
-                logger.warning(f"Notification {schedule_id} has expired")
-                return False, None
-            
-            # Generate delivery ID
-            delivery_id = str(uuid.uuid4())
-            
-            # Create delivery record
-            delivery = NotificationDelivery(
-                delivery_id=delivery_id,
-                schedule_id=schedule_id,
-                user_id=schedule.user_id,
-                notification_type=schedule.notification_type,
-                status=NotificationStatus.SENT,
-                delivery_channel=schedule.delivery_channel,
-                sent_at=datetime.utcnow()
-            )
-            
-            # Attempt delivery through selected channel
-            success, error_message = self._deliver_via_channel(schedule, delivery)
-            
-            if success:
-                delivery.status = NotificationStatus.DELIVERED
-                delivery.delivered_at = datetime.utcnow()
-            else:
-                delivery.status = NotificationStatus.FAILED
-                delivery.failed_at = datetime.utcnow()
-                delivery.failure_reason = error_message
-                
-                # Try fallback channel if available
-                fallback_success = self._try_fallback_delivery(schedule, delivery)
-                if fallback_success:
-                    delivery.status = NotificationStatus.DELIVERED
-                    delivery.delivered_at = datetime.utcnow()
-                    success = True
-            
-            # Store delivery record
-            self.delivery_records[schedule.user_id].append(delivery)
-            
-            # Update engagement metrics
-            self._update_engagement_metrics(schedule.user_id)
-            
-            logger.info(f"Notification delivery {delivery_id}: {'success' if success else 'failed'}")
-            return success, delivery_id
-            
-        except Exception as e:
-            logger.error(f"Error sending notification: {e}")
-            return False, None
-
-    def track_engagement(
-        self,
-        delivery_id: str,
-        engagement_type: str,
-        timestamp: Optional[datetime] = None,
-        metadata: Optional[Dict[str, Any]] = None
-    ) -> bool:
-        """
-        Track user engagement with notifications.
-        
-        Args:
-            delivery_id: Delivery record identifier
-            engagement_type: Type of engagement (read, clicked, dismissed)
-            timestamp: When engagement occurred
-            metadata: Additional engagement data
-            
-        Returns:
-            Success status
-        """
-        try:
-            if timestamp is None:
-                timestamp = datetime.utcnow()
-            
-            # Find delivery record
-            delivery_record = None
-            user_id = None
-            
-            for uid, deliveries in self.delivery_records.items():
-                for delivery in deliveries:
-                    if delivery.delivery_id == delivery_id:
-                        delivery_record = delivery
-                        user_id = uid
-                        break
-                if delivery_record:
-                    break
-            
-            if not delivery_record:
-                logger.warning(f"Delivery record not found: {delivery_id}")
-                return False
-            
-            # Update delivery record based on engagement type
-            engagement_type = engagement_type.lower()
-            
-            if engagement_type == "read":
-                delivery_record.status = NotificationStatus.READ
-                delivery_record.read_at = timestamp
-            elif engagement_type == "clicked":
-                delivery_record.status = NotificationStatus.CLICKED
-                delivery_record.clicked_at = timestamp
-                if not delivery_record.read_at:
-                    delivery_record.read_at = timestamp  # Implies read
-            elif engagement_type == "dismissed":
-                delivery_record.status = NotificationStatus.DISMISSED
-            
-            # Calculate engagement score
-            delivery_record.engagement_score = self._calculate_engagement_score(delivery_record)
-            
-            # Update metadata
-            if metadata:
-                delivery_record.metadata.update(metadata)
-            
-            # Update user engagement metrics
-            self._update_engagement_metrics(user_id)
-            
-            # Trigger optimization if needed
-            self._trigger_optimization_if_needed(user_id)
-            
-            logger.info(f"Tracked engagement: {delivery_id} - {engagement_type}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error tracking engagement: {e}")
-            return False
-
-    def update_user_preferences(
-        self,
-        user_id: str,
-        preferences_data: Dict[str, Any]
-    ) -> bool:
-        """
-        Update user notification preferences with validation.
-        
-        Args:
-            user_id: User identifier
-            preferences_data: Updated preference data
-            
-        Returns:
-            Success status
-        """
-        try:
-            current_prefs = self._get_user_preferences(user_id)
-            
-            # Update enabled types
-            if 'enabled_types' in preferences_data:
-                enabled_types = set()
-                for notif_type in preferences_data['enabled_types']:
-                    try:
-                        enabled_types.add(NotificationType(notif_type.lower()))
-                    except ValueError:
-                        logger.warning(f"Invalid notification type: {notif_type}")
-                current_prefs.enabled_types = enabled_types
-            
-            # Update quiet hours
-            if 'quiet_hours' in preferences_data:
-                quiet_hours = preferences_data['quiet_hours']
-                if isinstance(quiet_hours, list) and len(quiet_hours) == 2:
-                    start_hour, end_hour = quiet_hours
-                    if 0 <= start_hour <= 23 and 0 <= end_hour <= 23:
-                        current_prefs.quiet_hours = (start_hour, end_hour)
-            
-            # Update preferred channels
-            if 'preferred_channels' in preferences_data:
-                preferred_channels = {}
-                for notif_type, channels in preferences_data['preferred_channels'].items():
-                    try:
-                        type_enum = NotificationType(notif_type.lower())
-                        channel_enums = []
-                        for channel in channels:
-                            try:
-                                channel_enums.append(DeliveryChannel(channel.lower()))
-                            except ValueError:
-                                logger.warning(f"Invalid delivery channel: {channel}")
-                        if channel_enums:
-                            preferred_channels[type_enum] = channel_enums
-                    except ValueError:
-                        logger.warning(f"Invalid notification type: {notif_type}")
-                current_prefs.preferred_channels = preferred_channels
-            
-            # Update frequency limits
-            if 'frequency_limits' in preferences_data:
-                frequency_limits = preferences_data['frequency_limits']
-                if isinstance(frequency_limits, dict):
-                    current_prefs.frequency_limits = frequency_limits
-            
-            # Update timezone
-            if 'timezone' in preferences_data:
-                current_prefs.timezone = preferences_data['timezone']
-            
-            # Update language
-            if 'language' in preferences_data:
-                current_prefs.language = preferences_data['language']
-            
-            current_prefs.last_updated = datetime.utcnow()
-            self.user_preferences[user_id] = current_prefs
-            
-            logger.info(f"Updated notification preferences for user {user_id}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error updating user preferences: {e}")
-            return False
-
-    def get_engagement_insights(
-        self,
-        user_id: str,
-        days_back: int = 30
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Generate comprehensive engagement insights for user.
-        
-        Args:
-            user_id: User identifier
-            days_back: Number of days to analyze
-            
-        Returns:
-            Engagement insights and recommendations
-        """
-        try:
-            cutoff_date = datetime.utcnow() - timedelta(days=days_back)
-            
-            # Get recent deliveries
-            recent_deliveries = [
-                d for d in self.delivery_records.get(user_id, [])
-                if d.sent_at and d.sent_at >= cutoff_date
-            ]
-            
-            if not recent_deliveries:
-                return {
-                    "user_id": user_id,
-                    "period_days": days_back,
-                    "total_notifications": 0,
-                    "engagement_summary": "No notifications sent in period",
-                    "recommendations": ["Consider re-engaging user with relevant content"]
+            # Send WhatsApp message via Pinpoint
+            response = self.whatsapp_client.send_messages(
+                ApplicationId=self.whatsapp_application_id,
+                MessageRequest={
+                    'Addresses': {
+                        formatted_number: {
+                            'ChannelType': 'CUSTOM'  # WhatsApp uses custom channel
+                        }
+                    },
+                    'MessageConfiguration': {
+                        'DefaultMessage': {
+                            'Body': message
+                        },
+                        'CustomMessage': {
+                            'Data': json.dumps({
+                                'messaging_product': 'whatsapp',
+                                'to': formatted_number.replace('+', ''),  # WhatsApp format
+                                'type': 'text',
+                                'text': {'body': message}
+                            })
+                        }
+                    }
                 }
-            
-            # Calculate metrics
-            total_sent = len(recent_deliveries)
-            total_delivered = len([d for d in recent_deliveries if d.status != NotificationStatus.FAILED])
-            total_read = len([d for d in recent_deliveries if d.read_at])
-            total_clicked = len([d for d in recent_deliveries if d.clicked_at])
-            
-            delivery_rate = total_delivered / total_sent if total_sent > 0 else 0
-            read_rate = total_read / total_delivered if total_delivered > 0 else 0
-            click_rate = total_clicked / total_delivered if total_delivered > 0 else 0
-            
-            # Analyze engagement patterns
-            engagement_by_type = defaultdict(list)
-            engagement_by_hour = defaultdict(list)
-            engagement_by_channel = defaultdict(list)
-            
-            for delivery in recent_deliveries:
-                if delivery.engagement_score:
-                    engagement_by_type[delivery.notification_type.value].append(delivery.engagement_score)
-                    if delivery.sent_at:
-                        engagement_by_hour[delivery.sent_at.hour].append(delivery.engagement_score)
-                    engagement_by_channel[delivery.delivery_channel.value].append(delivery.engagement_score)
-            
-            # Find optimal patterns
-            best_type = max(engagement_by_type.items(), key=lambda x: statistics.mean(x[1]))[0] if engagement_by_type else None
-            best_hour = max(engagement_by_hour.items(), key=lambda x: statistics.mean(x[1]))[0] if engagement_by_hour else None
-            best_channel = max(engagement_by_channel.items(), key=lambda x: statistics.mean(x[1]))[0] if engagement_by_channel else None
-            
-            # Generate recommendations
-            recommendations = self._generate_engagement_recommendations(
-                user_id, recent_deliveries, delivery_rate, read_rate, click_rate
             )
             
-            insights = {
-                "user_id": user_id,
-                "period_days": days_back,
-                "total_notifications": total_sent,
-                "metrics": {
-                    "delivery_rate": delivery_rate,
-                    "read_rate": read_rate,
-                    "click_rate": click_rate,
-                    "total_delivered": total_delivered,
-                    "total_read": total_read,
-                    "total_clicked": total_clicked
-                },
-                "optimal_patterns": {
-                    "best_notification_type": best_type,
-                    "best_hour": best_hour,
-                    "best_channel": best_channel
-                },
-                "engagement_trends": {
-                    "by_type": {k: statistics.mean(v) for k, v in engagement_by_type.items()},
-                    "by_hour": {k: statistics.mean(v) for k, v in engagement_by_hour.items()},
-                    "by_channel": {k: statistics.mean(v) for k, v in engagement_by_channel.items()}
-                },
-                "recommendations": recommendations,
-                "generated_at": datetime.utcnow().isoformat()
+            logger.info(f"WhatsApp message sent successfully to {formatted_number}: {response['MessageResponse']['RequestId']}")
+            
+            return {
+                'success': True,
+                'message_id': response['MessageResponse']['RequestId'],
+                'destination': formatted_number,
+                'status': 'sent',
+                'platform': 'whatsapp'
             }
             
-            return insights
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            error_message = e.response['Error']['Message']
+            logger.error(f"AWS WhatsApp error ({error_code}): {error_message}")
+            
+            return {
+                'success': False,
+                'error': f'AWS WhatsApp error: {error_message}',
+                'error_code': error_code
+            }
             
         except Exception as e:
-            logger.error(f"Error generating engagement insights: {e}")
-            return None
+            logger.error(f"Error sending WhatsApp message to {to_number}: {str(e)}")
+            return {'success': False, 'error': str(e)}
 
-    def optimize_notification_strategy(self, user_id: str) -> List[OptimizationRecommendation]:
+    def send_sms(self, to_number: str, message: str, country_code: str = None) -> Dict[str, Any]:
         """
-        Generate optimization recommendations for user's notification strategy.
+        Send SMS message using AWS End User Messaging
         
         Args:
-            user_id: User identifier
+            to_number: Phone number in international format (+1234567890)
+            message: Message text
+            country_code: Optional country code for localization
             
         Returns:
-            List of optimization recommendations
+            Dict with success status and message ID
         """
         try:
-            recommendations = []
+            # Validate and format phone number
+            formatted_number = self._format_international_number(to_number)
+            if not formatted_number:
+                return {'success': False, 'error': f'Invalid phone number format: {to_number}'}
             
-            # Analyze recent performance
-            engagement_metrics = self.engagement_metrics.get(user_id)
-            if not engagement_metrics:
-                return []
+            # Get origination number from pool
+            origination_number = self._get_origination_number()
+            if not origination_number:
+                return {'success': False, 'error': 'No origination number available'}
             
-            # Low engagement recommendations
-            if engagement_metrics.read_rate < 0.3:
-                recommendations.append(OptimizationRecommendation(
-                    user_id=user_id,
-                    recommendation_type="timing_optimization",
-                    description="Low read rate suggests suboptimal timing",
-                    expected_improvement=0.4,
-                    confidence=0.8,
-                    implementation_difficulty="easy",
-                    suggested_actions=[
-                        f"Send notifications during optimal hours: {engagement_metrics.optimal_times}",
-                        "Test different days of the week",
-                        "Reduce frequency to avoid notification fatigue"
-                    ]
-                ))
+            # Send SMS via AWS
+            response = self.sms_client.send_text_message(
+                DestinationPhoneNumber=formatted_number,
+                OriginationIdentity=origination_number,
+                MessageBody=message,
+                ConfigurationSetName=self.configuration_set,
+                MessageType='TRANSACTIONAL',
+                DryRun=False
+            )
             
-            # Channel optimization
-            best_channel = self._find_best_performing_channel(user_id)
-            if best_channel and engagement_metrics.delivery_rate < 0.9:
-                recommendations.append(OptimizationRecommendation(
-                    user_id=user_id,
-                    recommendation_type="channel_optimization",
-                    description="Switch to better performing delivery channel",
-                    expected_improvement=0.3,
-                    confidence=0.7,
-                    implementation_difficulty="easy",
-                    suggested_actions=[
-                        f"Prioritize {best_channel} for critical notifications",
-                        "Set up fallback delivery channels",
-                        "Test multi-channel delivery for important messages"
-                    ]
-                ))
+            logger.info(f"SMS sent successfully to {formatted_number}: {response['MessageId']}")
             
-            # Frequency optimization
-            if engagement_metrics.engagement_trend == "decreasing":
-                recommendations.append(OptimizationRecommendation(
-                    user_id=user_id,
-                    recommendation_type="frequency_optimization",
-                    description="Decreasing engagement suggests notification fatigue",
-                    expected_improvement=0.5,
-                    confidence=0.9,
-                    implementation_difficulty="medium",
-                    suggested_actions=[
-                        "Reduce notification frequency by 30%",
-                        "Focus on high-value notifications only",
-                        "Implement smart batching for multiple updates"
-                    ]
-                ))
+            return {
+                'success': True,
+                'message_id': response['MessageId'],
+                'destination': formatted_number,
+                'status': 'sent'
+            }
             
-            # Content optimization
-            if engagement_metrics.click_rate < 0.15:
-                recommendations.append(OptimizationRecommendation(
-                    user_id=user_id,
-                    recommendation_type="content_optimization",
-                    description="Low click rate indicates content needs improvement",
-                    expected_improvement=0.6,
-                    confidence=0.6,
-                    implementation_difficulty="hard",
-                    suggested_actions=[
-                        "A/B test different message templates",
-                        "Increase personalization level",
-                        "Add clear call-to-action buttons",
-                        "Use more engaging subject lines"
-                    ]
-                ))
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            error_message = e.response['Error']['Message']
+            logger.error(f"AWS SMS error ({error_code}): {error_message}")
             
-            # Cache recommendations
-            self.optimization_cache[user_id] = recommendations
-            
-            logger.info(f"Generated {len(recommendations)} optimization recommendations for user {user_id}")
-            return recommendations
+            return {
+                'success': False,
+                'error': f'AWS SMS error: {error_message}',
+                'error_code': error_code
+            }
             
         except Exception as e:
-            logger.error(f"Error optimizing notification strategy: {e}")
-            return []
+            logger.error(f"Error sending SMS to {to_number}: {str(e)}")
+            return {'success': False, 'error': str(e)}
 
-    def _get_user_preferences(self, user_id: str) -> NotificationPreferences:
-        """Get user preferences with defaults if not set."""
-        if user_id in self.user_preferences:
-            return self.user_preferences[user_id]
+    def process_inbound_message(self, sqs_record: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Process inbound SMS message from SQS
         
-        # Create default preferences
-        default_prefs = NotificationPreferences(
-            user_id=user_id,
-            enabled_types=set(self.default_preferences["enabled_types"]),
-            quiet_hours=self.default_preferences["quiet_hours"],
-            preferred_channels=self.default_preferences["preferred_channels"].copy(),
-            frequency_limits=self.default_preferences["frequency_limits"].copy(),
-            timezone="UTC"
-        )
-        
-        self.user_preferences[user_id] = default_prefs
-        return default_prefs
-
-    def _select_optimal_channel(
-        self,
-        user_id: str,
-        notification_type: NotificationType,
-        priority: NotificationPriority
-    ) -> DeliveryChannel:
-        """Select optimal delivery channel based on preferences and reliability."""
-        preferences = self._get_user_preferences(user_id)
-        
-        # Check user preferences first
-        if notification_type in preferences.preferred_channels:
-            preferred_channels = preferences.preferred_channels[notification_type]
-            if preferred_channels:
-                return preferred_channels[0]  # Use most preferred
-        
-        # Fall back to priority-based selection
-        if priority == NotificationPriority.URGENT:
-            return DeliveryChannel.SMS  # Most reliable for urgent
-        elif priority == NotificationPriority.HIGH:
-            return DeliveryChannel.PUSH
-        else:
-            return DeliveryChannel.EMAIL
-
-    def _optimize_delivery_time(
-        self,
-        user_id: str,
-        notification_type: NotificationType,
-        requested_time: datetime,
-        preferences: NotificationPreferences
-    ) -> datetime:
-        """Optimize delivery time based on user behavior and preferences."""
-        # Check quiet hours
-        user_hour = requested_time.hour  # Simplified - should use user timezone
-        quiet_start, quiet_end = preferences.quiet_hours
-        
-        if quiet_start <= quiet_end:
-            # Normal quiet hours (e.g., 22:00 to 07:00)
-            if quiet_start <= user_hour <= quiet_end:
-                # Delay until after quiet hours
-                next_day = requested_time.date() + timedelta(days=1)
-                return datetime.combine(next_day, datetime.min.time()) + timedelta(hours=quiet_end + 1)
-        else:
-            # Quiet hours cross midnight (e.g., 22:00 to 07:00)
-            if user_hour >= quiet_start or user_hour <= quiet_end:
-                # Delay until after quiet hours
-                if user_hour >= quiet_start:
-                    # Today after quiet hours end
-                    next_day = requested_time.date() + timedelta(days=1)
-                    return datetime.combine(next_day, datetime.min.time()) + timedelta(hours=quiet_end + 1)
-                else:
-                    # Today after quiet hours end
-                    return requested_time.replace(hour=quiet_end + 1, minute=0, second=0, microsecond=0)
-        
-        # Check if user has optimal times
-        engagement_metrics = self.engagement_metrics.get(user_id)
-        if engagement_metrics and engagement_metrics.optimal_times:
-            optimal_hours = engagement_metrics.optimal_times
-            current_hour = requested_time.hour
+        Args:
+            sqs_record: SQS record containing SMS event data
             
-            # If not in optimal time, find nearest optimal time
-            if current_hour not in optimal_hours:
-                # Find nearest optimal hour
-                nearest_hour = min(optimal_hours, key=lambda h: abs(h - current_hour))
-                
-                # Only adjust if within reasonable range (6 hours)
-                if abs(nearest_hour - current_hour) <= 6:
-                    optimized_time = requested_time.replace(hour=nearest_hour, minute=0, second=0, microsecond=0)
-                    
-                    # Make sure it's in the future
-                    if optimized_time <= datetime.utcnow():
-                        optimized_time += timedelta(days=1)
-                    
-                    return optimized_time
-        
-        return requested_time
-
-    def _check_frequency_limits(
-        self,
-        user_id: str,
-        notification_type: NotificationType,
-        preferences: NotificationPreferences
-    ) -> bool:
-        """Check if notification is within frequency limits."""
+        Returns:
+            Parsed message data or None if parsing fails
+        """
         try:
-            # Get recent deliveries
-            recent_deliveries = self.delivery_records.get(user_id, [])
+            # Parse SQS message body
+            message_body = json.loads(sqs_record['body'])
             
-            # Check daily limit
-            today = datetime.utcnow().date()
-            today_count = len([
-                d for d in recent_deliveries
-                if d.sent_at and d.sent_at.date() == today and d.notification_type == notification_type
-            ])
+            # Extract SMS details from AWS event
+            if 'Records' in message_body:
+                # SNS-wrapped message
+                sns_record = message_body['Records'][0]
+                sms_data = json.loads(sns_record['Sns']['Message'])
+            else:
+                # Direct SQS message
+                sms_data = message_body
             
-            daily_limit = preferences.frequency_limits.get("daily", 10)
-            if today_count >= daily_limit:
-                return False
+            # Extract key information
+            parsed_message = {
+                'platform': 'aws_sms',
+                'user_id': sms_data.get('originationPhoneNumber', ''),
+                'message': sms_data.get('messageBody', ''),
+                'destination_number': sms_data.get('destinationPhoneNumber', ''),
+                'message_id': sms_data.get('messageId', ''),
+                'timestamp': sms_data.get('timestamp', datetime.utcnow().isoformat()),
+                'country_code': self._detect_country_from_number(sms_data.get('originationPhoneNumber', '')),
+                'raw_data': sms_data
+            }
             
-            # Check weekly limit
-            week_ago = datetime.utcnow() - timedelta(days=7)
-            week_count = len([
-                d for d in recent_deliveries
-                if d.sent_at and d.sent_at >= week_ago and d.notification_type == notification_type
-            ])
+            logger.info(f"Processed inbound SMS from {parsed_message['user_id']}: {parsed_message['message'][:50]}...")
+            return parsed_message
             
-            weekly_limit = preferences.frequency_limits.get("weekly", 20)
-            if week_count >= weekly_limit:
-                return False
+        except Exception as e:
+            logger.error(f"Error processing inbound SMS: {str(e)}")
+            return None
+
+    def send_bulk_messages(self, messages: List[Dict[str, str]]) -> Dict[str, Any]:
+        """
+        Send multiple SMS messages efficiently
+        
+        Args:
+            messages: List of dicts with 'to_number' and 'message' keys
             
+        Returns:
+            Summary of sent messages
+        """
+        results = {
+            'success_count': 0,
+            'failure_count': 0,
+            'results': []
+        }
+        
+        for msg in messages:
+            result = self.send_message(msg['to_number'], msg['message'], msg.get('country_code'))
+            results['results'].append(result)
+            
+            if result['success']:
+                results['success_count'] += 1
+            else:
+                results['failure_count'] += 1
+        
+        logger.info(f"Bulk SMS completed: {results['success_count']} sent, {results['failure_count']} failed")
+        return results
+
+    def get_delivery_status(self, message_id: str) -> Dict[str, Any]:
+        """
+        Check delivery status of a sent message
+        
+        Args:
+            message_id: AWS message ID
+            
+        Returns:
+            Delivery status information
+        """
+        try:
+            # AWS End User Messaging provides delivery events via CloudWatch
+            # This would typically be implemented with CloudWatch Events
+            # For now, return a placeholder
+            return {
+                'message_id': message_id,
+                'status': 'delivered',  # Would be retrieved from CloudWatch Events
+                'timestamp': datetime.utcnow().isoformat()
+            }
+            
+        except Exception as e:
+            logger.error(f"Error checking delivery status for {message_id}: {str(e)}")
+            return {'error': str(e)}
+
+    def handle_opt_out(self, phone_number: str) -> bool:
+        """
+        Handle opt-out requests (STOP messages)
+        
+        Args:
+            phone_number: Phone number to opt out
+            
+        Returns:
+            Success status
+        """
+        try:
+            # Add to AWS opt-out list
+            self.sms_client.put_opted_out_number(
+                OptOutListName=f'ai-nutritionist-{self.environment}-optout-list',
+                OptedOutNumber=phone_number
+            )
+            
+            logger.info(f"Added {phone_number} to opt-out list")
             return True
             
         except Exception as e:
-            logger.error(f"Error checking frequency limits: {e}")
-            return True  # Allow if check fails
+            logger.error(f"Error handling opt-out for {phone_number}: {str(e)}")
+            return False
 
-    def _deliver_via_channel(
-        self,
-        schedule: NotificationSchedule,
-        delivery: NotificationDelivery
-    ) -> Tuple[bool, Optional[str]]:
-        """Deliver notification via specified channel."""
+    def validate_international_phone(self, phone_number: str) -> Dict[str, Any]:
+        """
+        Validate and format international phone number
+        
+        Args:
+            phone_number: Phone number to validate
+            
+        Returns:
+            Validation result with formatted number and country info
+        """
         try:
-            channel = schedule.delivery_channel
+            formatted = self._format_international_number(phone_number)
+            if not formatted:
+                return {'valid': False, 'error': 'Invalid phone number format'}
             
-            if channel == DeliveryChannel.SMS:
-                return self._deliver_via_sms(schedule, delivery)
-            elif channel == DeliveryChannel.EMAIL:
-                return self._deliver_via_email(schedule, delivery)
-            elif channel == DeliveryChannel.PUSH:
-                return self._deliver_via_push(schedule, delivery)
-            elif channel == DeliveryChannel.IN_APP:
-                return self._deliver_via_in_app(schedule, delivery)
-            elif channel == DeliveryChannel.WEBHOOK:
-                return self._deliver_via_webhook(schedule, delivery)
-            else:
-                return False, f"Unsupported delivery channel: {channel}"
-                
-        except Exception as e:
-            logger.error(f"Error delivering via channel: {e}")
-            return False, str(e)
-
-    def _deliver_via_sms(self, schedule: NotificationSchedule, delivery: NotificationDelivery) -> Tuple[bool, Optional[str]]:
-        """Deliver notification via SMS."""
-        # Integration with SMS service
-        # For now, simulate delivery
-        logger.info(f"SMS delivery simulated for {schedule.user_id}: {schedule.title}")
-        return True, None
-
-    def _deliver_via_email(self, schedule: NotificationSchedule, delivery: NotificationDelivery) -> Tuple[bool, Optional[str]]:
-        """Deliver notification via email."""
-        # Integration with email service
-        logger.info(f"Email delivery simulated for {schedule.user_id}: {schedule.title}")
-        return True, None
-
-    def _deliver_via_push(self, schedule: NotificationSchedule, delivery: NotificationDelivery) -> Tuple[bool, Optional[str]]:
-        """Deliver notification via push notification."""
-        # Integration with push notification service
-        logger.info(f"Push delivery simulated for {schedule.user_id}: {schedule.title}")
-        return True, None
-
-    def _deliver_via_in_app(self, schedule: NotificationSchedule, delivery: NotificationDelivery) -> Tuple[bool, Optional[str]]:
-        """Deliver notification via in-app messaging."""
-        # Integration with in-app messaging
-        logger.info(f"In-app delivery simulated for {schedule.user_id}: {schedule.title}")
-        return True, None
-
-    def _deliver_via_webhook(self, schedule: NotificationSchedule, delivery: NotificationDelivery) -> Tuple[bool, Optional[str]]:
-        """Deliver notification via webhook."""
-        # Integration with webhook service
-        logger.info(f"Webhook delivery simulated for {schedule.user_id}: {schedule.title}")
-        return True, None
-
-    def _try_fallback_delivery(self, schedule: NotificationSchedule, delivery: NotificationDelivery) -> bool:
-        """Try fallback delivery method if primary channel fails."""
-        # Define fallback chain
-        fallback_chain = {
-            DeliveryChannel.PUSH: DeliveryChannel.SMS,
-            DeliveryChannel.EMAIL: DeliveryChannel.SMS,
-            DeliveryChannel.IN_APP: DeliveryChannel.PUSH,
-            DeliveryChannel.WEBHOOK: DeliveryChannel.EMAIL
-        }
-        
-        current_channel = schedule.delivery_channel
-        fallback_channel = fallback_chain.get(current_channel)
-        
-        if fallback_channel:
-            logger.info(f"Trying fallback delivery: {current_channel.value} -> {fallback_channel.value}")
-            schedule.delivery_channel = fallback_channel
-            success, _ = self._deliver_via_channel(schedule, delivery)
-            if success:
-                delivery.metadata["fallback_used"] = fallback_channel.value
-                return True
-        
-        return False
-
-    def _calculate_engagement_score(self, delivery: NotificationDelivery) -> float:
-        """Calculate engagement score for a delivery."""
-        score = 0.0
-        
-        # Base score for delivery
-        if delivery.status != NotificationStatus.FAILED:
-            score += 0.3
-        
-        # Read engagement
-        if delivery.read_at:
-            score += 0.4
+            country_code = self._detect_country_from_number(formatted)
+            config = self.get_country_config(country_code) if country_code else None
             
-            # Time to read bonus (faster = more engaging)
-            if delivery.sent_at and delivery.read_at:
-                time_to_read = (delivery.read_at - delivery.sent_at).total_seconds()
-                if time_to_read < 300:  # Read within 5 minutes
-                    score += 0.2
-                elif time_to_read < 3600:  # Read within 1 hour
-                    score += 0.1
-        
-        # Click engagement
-        if delivery.clicked_at:
-            score += 0.3
-        
-        return min(1.0, score)
-
-    def _update_engagement_metrics(self, user_id: str) -> None:
-        """Update engagement metrics for user."""
-        try:
-            deliveries = self.delivery_records.get(user_id, [])
-            if not deliveries:
-                return
-            
-            # Calculate metrics from last 30 days
-            cutoff_date = datetime.utcnow() - timedelta(days=30)
-            recent_deliveries = [d for d in deliveries if d.sent_at and d.sent_at >= cutoff_date]
-            
-            if not recent_deliveries:
-                return
-            
-            # Calculate rates
-            total_sent = len(recent_deliveries)
-            total_delivered = len([d for d in recent_deliveries if d.status != NotificationStatus.FAILED])
-            total_read = len([d for d in recent_deliveries if d.read_at])
-            total_clicked = len([d for d in recent_deliveries if d.clicked_at])
-            
-            delivery_rate = total_delivered / total_sent if total_sent > 0 else 0
-            read_rate = total_read / total_delivered if total_delivered > 0 else 0
-            click_rate = total_clicked / total_delivered if total_delivered > 0 else 0
-            
-            # Find optimal times
-            hour_engagement = defaultdict(list)
-            for delivery in recent_deliveries:
-                if delivery.sent_at and delivery.engagement_score:
-                    hour_engagement[delivery.sent_at.hour].append(delivery.engagement_score)
-            
-            optimal_times = []
-            for hour, scores in hour_engagement.items():
-                avg_score = statistics.mean(scores)
-                if avg_score > 0.6:  # Good engagement threshold
-                    optimal_times.append(hour)
-            
-            # Determine engagement trend
-            if len(recent_deliveries) >= 10:
-                first_half = recent_deliveries[:len(recent_deliveries)//2]
-                second_half = recent_deliveries[len(recent_deliveries)//2:]
-                
-                first_half_avg = statistics.mean([d.engagement_score for d in first_half if d.engagement_score])
-                second_half_avg = statistics.mean([d.engagement_score for d in second_half if d.engagement_score])
-                
-                if second_half_avg > first_half_avg * 1.1:
-                    trend = "increasing"
-                elif second_half_avg < first_half_avg * 0.9:
-                    trend = "decreasing"
-                else:
-                    trend = "stable"
-            else:
-                trend = "stable"
-            
-            # Get last engagement time
-            last_engagement = max([d.clicked_at or d.read_at or d.sent_at for d in recent_deliveries])
-            
-            # Update metrics
-            metrics = EngagementMetrics(
-                user_id=user_id,
-                total_sent=total_sent,
-                total_delivered=total_delivered,
-                total_read=total_read,
-                total_clicked=total_clicked,
-                delivery_rate=delivery_rate,
-                read_rate=read_rate,
-                click_rate=click_rate,
-                optimal_times=optimal_times,
-                preferred_frequency=total_sent // 4,  # Weekly average
-                engagement_trend=trend,
-                last_engagement=last_engagement
-            )
-            
-            self.engagement_metrics[user_id] = metrics
-            
-        except Exception as e:
-            logger.error(f"Error updating engagement metrics: {e}")
-
-    def _trigger_optimization_if_needed(self, user_id: str) -> None:
-        """Trigger optimization analysis if metrics indicate need."""
-        metrics = self.engagement_metrics.get(user_id)
-        if not metrics:
-            return
-        
-        # Trigger optimization if performance is declining
-        if (metrics.read_rate < 0.3 or 
-            metrics.engagement_trend == "decreasing" or
-            metrics.delivery_rate < 0.8):
-            
-            logger.info(f"Triggering optimization for user {user_id} due to poor metrics")
-            self.optimize_notification_strategy(user_id)
-
-    def _generate_engagement_recommendations(
-        self,
-        user_id: str,
-        deliveries: List[NotificationDelivery],
-        delivery_rate: float,
-        read_rate: float,
-        click_rate: float
-    ) -> List[str]:
-        """Generate engagement improvement recommendations."""
-        recommendations = []
-        
-        if delivery_rate < 0.8:
-            recommendations.append("Improve delivery rate by using more reliable channels")
-        
-        if read_rate < 0.4:
-            recommendations.append("Optimize send times to increase read rates")
-            recommendations.append("Improve subject lines and preview text")
-        
-        if click_rate < 0.15:
-            recommendations.append("Add clear call-to-action elements")
-            recommendations.append("Increase content personalization")
-        
-        # Analyze failure patterns
-        failed_deliveries = [d for d in deliveries if d.status == NotificationStatus.FAILED]
-        if len(failed_deliveries) > len(deliveries) * 0.2:
-            recommendations.append("Set up fallback delivery channels to reduce failures")
-        
-        return recommendations
-
-    def _find_best_performing_channel(self, user_id: str) -> Optional[str]:
-        """Find the best performing delivery channel for user."""
-        deliveries = self.delivery_records.get(user_id, [])
-        if not deliveries:
-            return None
-        
-        channel_performance = defaultdict(list)
-        for delivery in deliveries:
-            if delivery.engagement_score:
-                channel_performance[delivery.delivery_channel.value].append(delivery.engagement_score)
-        
-        if not channel_performance:
-            return None
-        
-        # Find channel with highest average engagement
-        best_channel = max(
-            channel_performance.items(),
-            key=lambda x: statistics.mean(x[1])
-        )[0]
-        
-        return best_channel
-
-    def _initialize_default_preferences(self) -> Dict[str, Any]:
-        """Initialize default notification preferences."""
-        return {
-            "enabled_types": [
-                NotificationType.MEAL_REMINDER,
-                NotificationType.GOAL_UPDATE,
-                NotificationType.WEEKLY_SUMMARY,
-                NotificationType.ACHIEVEMENT
-            ],
-            "quiet_hours": (22, 7),  # 10 PM to 7 AM
-            "preferred_channels": {
-                NotificationType.MEAL_REMINDER: [DeliveryChannel.PUSH, DeliveryChannel.SMS],
-                NotificationType.GOAL_UPDATE: [DeliveryChannel.PUSH, DeliveryChannel.EMAIL],
-                NotificationType.WEEKLY_SUMMARY: [DeliveryChannel.EMAIL],
-                NotificationType.ACHIEVEMENT: [DeliveryChannel.PUSH, DeliveryChannel.SMS],
-                NotificationType.SYSTEM_ALERT: [DeliveryChannel.SMS, DeliveryChannel.EMAIL]
-            },
-            "frequency_limits": {
-                "daily": 5,
-                "weekly": 15
+            return {
+                'valid': True,
+                'formatted': formatted,
+                'country_code': country_code,
+                'config': config,
+                'whatsapp_link': self.generate_whatsapp_link(formatted)
             }
-        }
+            
+        except Exception as e:
+            return {'valid': False, 'error': str(e)}
 
-    def _initialize_channel_reliability(self) -> Dict[DeliveryChannel, float]:
-        """Initialize delivery channel reliability scores."""
-        return {
-            DeliveryChannel.SMS: 0.95,
-            DeliveryChannel.PUSH: 0.85,
-            DeliveryChannel.EMAIL: 0.90,
-            DeliveryChannel.IN_APP: 0.80,
-            DeliveryChannel.WEBHOOK: 0.75
-        }
+    def get_country_config(self, country_code: str) -> Dict[str, Any]:
+        """Get localized configuration for country"""
+        return self.COUNTRY_CONFIGS.get(country_code.upper(), self.COUNTRY_CONFIGS['US'])
+
+    def _get_origination_number(self) -> Optional[str]:
+        """Get origination phone number from the pool"""
+        if self._origination_number:
+            return self._origination_number
+            
+        try:
+            if self.phone_pool_id:
+                # Get phone numbers from pool
+                response = self.sms_client.describe_phone_numbers(
+                    Filters=[
+                        {
+                            'Name': 'pool-id',
+                            'Values': [self.phone_pool_id]
+                        }
+                    ]
+                )
+                
+                if response['PhoneNumbers']:
+                    self._origination_number = response['PhoneNumbers'][0]['PhoneNumber']
+                    return self._origination_number
+            
+            # Fallback: get from parameter store
+            parameter_name = f'/ai-nutritionist/{self.environment}/sms/phone-number'
+            response = self.ssm.get_parameter(Name=parameter_name)
+            self._origination_number = response['Parameter']['Value']
+            return self._origination_number
+            
+        except Exception as e:
+            logger.error(f"Error getting origination number: {str(e)}")
+            return None
+
+    def _format_international_number(self, phone_number: str) -> Optional[str]:
+        """Format phone number to international format"""
+        try:
+            # Remove all non-digit characters except +
+            cleaned = ''.join(c for c in phone_number if c.isdigit() or c == '+')
+            
+            # Add + if not present and starts with country code
+            if not cleaned.startswith('+'):
+                if cleaned.startswith('1') and len(cleaned) == 11:  # US/Canada
+                    cleaned = f'+{cleaned}'
+                elif cleaned.startswith('44') and len(cleaned) >= 10:  # UK
+                    cleaned = f'+{cleaned}'
+                elif len(cleaned) >= 10:  # Other international
+                    cleaned = f'+{cleaned}'
+                else:
+                    return None
+            
+            # Basic validation
+            if len(cleaned) < 8 or len(cleaned) > 17:
+                return None
+                
+            return cleaned
+            
+        except Exception:
+            return None
+
+    def _detect_country_from_number(self, phone_number: str) -> Optional[str]:
+        """Detect country code from phone number"""
+        if not phone_number:
+            return None
+            
+        # Remove + and get first few digits
+        digits = phone_number.replace('+', '')
+        
+        if digits.startswith('1'):
+            return 'US'
+        elif digits.startswith('44'):
+            return 'UK'
+        elif digits.startswith('61'):
+            return 'AU'
+        elif digits.startswith('91'):
+            return 'IN'
+        elif digits.startswith('49'):
+            return 'DE'
+        elif digits.startswith('33'):
+            return 'FR'
+        elif digits.startswith('81'):
+            return 'JP'
+        elif digits.startswith('65'):
+            return 'SG'
+        elif digits.startswith('55'):
+            return 'BR'
+        
+        return None
+
+    def get_international_examples(self) -> List[Dict[str, str]]:
+        """Get example phone numbers for different countries"""
+        return [
+            {'country': 'United States', 'code': 'US', 'example': '+1-555-123-4567', 'format': '+15551234567'},
+            {'country': 'United Kingdom', 'code': 'UK', 'example': '+44-20-7123-4567', 'format': '+442071234567'},
+            {'country': 'Australia', 'code': 'AU', 'example': '+61-3-8123-4567', 'format': '+61381234567'},
+            {'country': 'Canada', 'code': 'CA', 'example': '+1-416-123-4567', 'format': '+14161234567'},
+            {'country': 'India', 'code': 'IN', 'example': '+91-80-1234-5678', 'format': '+918012345678'},
+            {'country': 'Germany', 'code': 'DE', 'example': '+49-30-1234-5678', 'format': '+493012345678'},
+            {'country': 'France', 'code': 'FR', 'example': '+33-1-42-12-34-56', 'format': '+33142123456'},
+            {'country': 'Japan', 'code': 'JP', 'example': '+81-3-1234-5678', 'format': '+81312345678'},
+            {'country': 'Singapore', 'code': 'SG', 'example': '+65-6123-4567', 'format': '+6561234567'},
+            {'country': 'Brazil', 'code': 'BR', 'example': '+55-11-1234-5678', 'format': '+5511123456678'}
+        ]
+
+    def generate_whatsapp_link(self, phone_number: str, message: str = None) -> str:
+        """
+        Generate WhatsApp link for any international number
+        
+        Args:
+            phone_number: International phone number
+            message: Optional pre-filled message
+            
+        Returns:
+            WhatsApp link (wa.me format)
+        """
+        try:
+            import urllib.parse
+            
+            # Remove + and format for wa.me
+            clean_number = phone_number.replace('+', '').replace('-', '').replace(' ', '')
+            
+            base_url = f"https://wa.me/{clean_number}"
+            
+            if message:
+                encoded_message = urllib.parse.quote(message)
+                return f"{base_url}?text={encoded_message}"
+            
+            return base_url
+            
+        except Exception as e:
+            logger.error(f"Error generating WhatsApp link: {str(e)}")
+            return f"https://wa.me/{phone_number.replace('+', '')}"
+
+
+# Factory function to get the appropriate messaging service  
+def get_messaging_service() -> AWSMessagingService:
+    """
+    Factory function to get AWS messaging service instance
+    Handles both SMS and WhatsApp through AWS End User Messaging
+    """
+    return AWSMessagingService()
+
+# Backward compatibility aliases
+def get_sms_service() -> AWSMessagingService:
+    """Backward compatibility - now returns unified messaging service"""
+    return get_messaging_service()
