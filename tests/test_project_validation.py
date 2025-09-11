@@ -45,8 +45,8 @@ def test_sample_data_files():
     """Test that sample data files are properly formatted"""
     project_root = Path(__file__).parent.parent
     
-    # Test Twilio webhook sample
-    webhook_file = project_root / "src" / "data" / "sample-twilio-webhook.json"
+    # Test Twilio webhook sample (moved to fixtures)
+    webhook_file = project_root / "tests" / "fixtures" / "data" / "sample-twilio-webhook.json"
     assert webhook_file.exists()
     
     webhook_data = json.loads(webhook_file.read_text())
@@ -54,8 +54,8 @@ def test_sample_data_files():
     assert "Body" in webhook_data
     assert "MessageSid" in webhook_data
     
-    # Test recipe sample
-    recipe_file = project_root / "src" / "data" / "sample-recipes.json"
+    # Test recipe sample (moved to fixtures)
+    recipe_file = project_root / "tests" / "fixtures" / "data" / "sample-recipes.json"
     assert recipe_file.exists()
     
     recipe_data = json.loads(recipe_file.read_text())
@@ -87,13 +87,15 @@ def test_documentation_files():
     assert readme.exists()
     assert len(readme.read_text(encoding='utf-8')) > 1000  # Substantial content
     
-    dev_guide = project_root / "DEVELOPMENT.md"
-    assert dev_guide.exists()
-    assert "Prerequisites" in dev_guide.read_text()
+    # Check consolidated documentation in docs/
+    docs_readme = project_root / "docs" / "README.md"
+    assert docs_readme.exists()
+    assert "Prerequisites" in docs_readme.read_text(encoding='utf-8')
     
-    deployment_guide = project_root / "DEPLOYMENT.md"
-    assert deployment_guide.exists()
-    assert "sam deploy" in deployment_guide.read_text()
+    # Check that essential configuration files exist
+    env_template = project_root / ".env.template"
+    assert env_template.exists()
+    assert "AWS_DEFAULT_REGION" in env_template.read_text()
 
 
 def test_python_modules_import():

@@ -1,206 +1,80 @@
 # 🥗 AI Nutritionist Assistant
 
-[![CI/CD Pipeline](https://github.com/Owen-Richards/ai-nutritionist/actions/workflows/ci.yml/badge.svg)](https://github.com/Owen-Richards/ai-nutritionist/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/Owen-Richards/ai-nutritionist/branch/main/graph/badge.svg)](https://codecov.io/gh/Owen-Richards/ai-nutritionist)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.13+](https://img.shields.io/badge/python-3.13+-blue.svg)](https://www.python.org/downloads/)
 [![AWS SAM](https://img.shields.io/badge/AWS-SAM-orange.svg)](https://aws.amazon.com/serverless/sam/)
-[![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-> **A progressive personalization platform that transforms how people approach nutrition through WhatsApp/SMS coaching, visual meal logging, and AI-powered insights—designed for profitability from day one.**
+> **AI-powered nutrition coaching through WhatsApp/SMS with progressive personalization and multi-goal meal planning.**
 
-## 🎯 Vision
+## 🎯 Overview
 
-**Nutrition guidance that feels like texting a knowledgeable friend, not using medical software.**
+Transform nutrition guidance through conversational AI that learns user preferences progressively while delivering immediate value through budget-conscious meal planning, dietary goal management, and personalized recommendations.
 
-The AI Nutritionist Assistant eliminates the complexity and overwhelm of traditional nutrition apps by meeting users where they are—in their messaging apps. Through progressive personalization over 30 days, we learn user preferences gradually while providing immediate value through budget-conscious meal planning, visual food logging, and seamless calendar integration.
-
-**Core Philosophy:**
-- **Progressive Learning**: Start simple, add complexity naturally as trust builds
-- **Accessibility First**: WhatsApp/SMS works everywhere, no app downloads required  
-- **Profitability Focus**: Sustainable business model with clear monetization paths
-- **Real Behavior**: Visual meal logging and auto-rebalancing for actual eating patterns
-
-## ✨ Key Features
-
-### 🤖 **Progressive Personalization**
-- **Week 1**: Minimal onboarding (allergies, primary goal, starter 3-day plan)
-- **Week 2-4**: Gradual learning (cuisine preferences, cooking constraints, budget sensitivity)
-- **Ongoing**: Behavioral adaptation through meal ratings and substitution patterns
-
-### 💬 **Multi-Platform Messaging**
-- WhatsApp Business API integration
-- SMS fallback for global accessibility
-- Natural language conversation interface
-- Photo meal logging with AI recognition
-
-### 📱 **Visual Meal Logging**
-- Send photos of meals for instant nutrition analysis
-- Auto-rebalancing suggestions based on actual eating patterns
-- Daily/weekly nutrition summaries with visual insights
-- Integration with calendar for meal planning
-
-### 🗓️ **Calendar Sync & Planning**
-- Google Calendar integration for meal scheduling
-- Automatic grocery list generation
-- Meal prep reminders and cooking time estimates
-- Family meal coordination
-
-### 🏠 **Household Linking**
-- Consent-based family nutrition tracking
-- Shared meal plans with individual preferences
-- Privacy-compliant data sharing controls
-- Multi-user cost optimization
-
-### 💰 **Monetization & Profitability**
-- **Subscription Tiers**: Free, Standard ($5-10/mo), Premium ($15-20/mo)
-- **Affiliate Revenue**: Grocery cart links (Amazon Fresh, Instacart)
-- **Usage Tracking**: Per-user cost monitoring and entitlement enforcement
-- **Dynamic Pricing**: Profitability controls with intelligent rate limiting
-
-## 🏗️ Architecture
-
-```mermaid
-graph TB
-    A[User via WhatsApp/SMS] --> B[Twilio Webhook]
-    B --> C[API Gateway]
-    C --> D[Lambda Router]
-    
-    D --> E[Message Handler]
-    D --> F[Photo Analysis]
-    D --> G[Calendar Sync]
-    
-    E --> H[AWS Bedrock AI]
-    F --> I[Computer Vision Pipeline]
-    G --> J[Google Calendar API]
-    
-    H --> K[DynamoDB User Profiles]
-    I --> L[Nutrition Database]
-    J --> M[EventBridge Scheduler]
-    
-    K --> N[Usage Ledger]
-    L --> O[Meal Logging]
-    M --> P[Auto Rebalancing]
-    
-    N --> Q[Stripe Billing]
-    O --> R[Affiliate Links]
-    P --> S[WhatsApp Response]
-```
-
-### 🛠️ Tech Stack
-
-| Component | Technology | Purpose |
-|-----------|------------|---------|
-| **Runtime** | Python 3.13 | Latest stable with performance improvements |
-| **AI/ML** | AWS Bedrock (Claude 3) | Advanced reasoning for nutrition coaching |
-| **Vision** | AWS Rekognition + Bedrock | Food detection and nutrition estimation |
-| **Database** | DynamoDB | User profiles, meal logs, usage tracking |
-| **Messaging** | Twilio WhatsApp Business API | Primary user interface |
-| **Infrastructure** | Terraform + AWS SAM | Infrastructure as code |
-| **Calendar** | Google Calendar API | Meal planning and scheduling |
-| **Payments** | Stripe | Subscription management |
-| **Monitoring** | CloudWatch + X-Ray | Observability and cost tracking |
-
-## 📚 Documentation
-
-- **[🚀 Quick Start](docs/SETUP.md#quick-start)** - Get up and running in 10 minutes
-- **[📖 Setup Guide](docs/SETUP.md)** - Complete installation and deployment
-- **[🏗️ Architecture](docs/ARCHITECTURE.md)** - System design and data flows
-- **[🔌 API Documentation](docs/API.md)** - REST API reference and examples
-- **[🧠 Personalization](docs/PERSONALIZATION.md)** - Progressive learning strategy
-- **[💰 Monetization](docs/MONETIZATION.md)** - Business model and profitability
-- **[🔒 Privacy](docs/PRIVACY.md)** - Data handling and consent flows
-- **[🤝 Contributing](CONTRIBUTING.md)** - Development guidelines and workflow
-- **[🔒 Security](SECURITY.md)** - Security policies and vulnerability reporting
-
+**Key Features:**
+- 📱 **WhatsApp/SMS Integration** - No app downloads required
+- 🤖 **AI-Powered Meal Planning** - AWS Bedrock integration
+- 🎯 **Multi-Goal Support** - Budget, health, dietary preferences
+- 📊 **Progressive Personalization** - Learn preferences over time
+- 💰 **Cost-Conscious Design** - Under $75/week meal planning
 ## 🚀 Quick Start
-
-**Prerequisites**: Python 3.13+, AWS CLI, Terraform, Twilio account
 
 ```bash
 # 1. Clone and setup
 git clone https://github.com/Owen-Richards/ai-nutritionist.git
 cd ai-nutritionist
-python -m venv .venv && .venv\Scripts\activate  # Windows
+python -m venv .venv && .venv/Scripts/activate
 pip install -r requirements.txt
 
 # 2. Configure environment
-cp .env.example .env
+cp .env.template .env
 # Edit .env with your API keys
 
-# 3. Deploy infrastructure
-cd infrastructure
-terraform init
-terraform plan
-terraform apply
+# 3. Run tests
+pytest tests/ -v
 
-# 4. Deploy application
-cd ..
+# 4. Deploy to AWS
 sam build && sam deploy --guided
 ```
 
-**Test the bot**: Send "Hi, I want to start eating healthier" to your Twilio WhatsApp number.
+## 🏗️ Architecture
 
-For detailed setup instructions, see [docs/SETUP.md](docs/SETUP.md).
-
-## 📱 Usage Examples
-
-### 🥗 **Progressive Onboarding**
+### Domain Structure
 ```
-User: "Hi, I want to start eating healthier"
-Bot: "Great! Let's start simple. Any foods you can't eat? (allergies, dietary restrictions)"
-
-User: "I'm vegetarian and can't have nuts"
-Bot: "Perfect! What's your main goal? Save money, lose weight, or just eat better?"
-
-User: "Save money, I'm on a tight budget"
-Bot: "I'll create a budget-friendly vegetarian meal plan. What's your weekly food budget?"
+src/services/
+├── nutrition/           # Nutrition analysis, tracking, insights
+├── personalization/     # User profiling, adaptive learning  
+├── meal_planning/       # Advanced meal planning with multi-goal
+├── messaging/           # Multi-platform communication
+├── business/            # Revenue, subscriptions, partnerships
+└── infrastructure/      # Technical foundation, AI services
 ```
 
-### 📸 **Visual Meal Logging**
-```
-User: [Sends photo of lunch]
-Bot: "I see a chicken Caesar salad (~450 calories, 25g protein). 
-     For dinner, try something with more fiber to balance your day. 
-     Want me to suggest options under $8?"
+### Tech Stack
+- **Runtime**: Python 3.13
+- **AI/ML**: AWS Bedrock (Amazon Titan)
+- **Database**: DynamoDB
+- **Messaging**: AWS End User Messaging
+- **Infrastructure**: AWS SAM + CloudFormation
 
-User: "Yes, and I'm cooking for my roommate too"
-Bot: "Here are 3 fiber-rich dinner options for 2 people under $16 total..."
-```
+## 📚 Documentation
 
-### 🗓️ **Calendar Integration**
-```
-User: "Plan my meals for next week"
-Bot: "I'll add your meal plan to Google Calendar. When do you usually:
-     • Prep meals? (I'll set reminders)
-     • Go grocery shopping? (I'll send lists)
-     • Cook dinner? (I'll suggest 30-min meals on busy days)"
-```
+For complete documentation, see [`docs/README.md`](docs/README.md):
+- Architecture & API Reference
+- Development & Deployment Guide  
+- Privacy & Security Policies
+- Monetization Strategy
 
-## 💰 Monetization Strategy
+## 🤝 Contributing
 
-### 📊 **Subscription Tiers**
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit changes (`git commit -m 'Add amazing feature'`)
+4. Push to branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-| Feature | Free | Standard ($7/mo) | Premium ($15/mo) |
-|---------|------|------------------|------------------|
-| Weekly meal plans | 1 | Unlimited | Unlimited |
-| Photo meal logging | 5/week | Unlimited | Unlimited |
-| Calendar sync | ❌ | ✅ | ✅ |
-| Household linking | ❌ | 2 members | 6 members |
-| Nutrition analytics | Basic | Detailed | Advanced + trends |
-| Affiliate savings | ❌ | ✅ | ✅ + priority |
-| AI coaching depth | Basic | Personalized | Deep insights |
+## � License
 
-### 🛒 **Affiliate Revenue Streams**
-- **Grocery Delivery**: Amazon Fresh, Instacart (5-8% commission)
-- **Meal Kits**: HelloFresh, Blue Apron (15-25% first order)
-- **Kitchen Tools**: Recommended equipment (3-8% commission)
-- **Supplements**: Personalized recommendations (10-20% commission)
-
-### 📈 **Unit Economics**
-- **Customer Acquisition Cost**: $15-25 (social media + referrals)
-- **Average Revenue Per User**: $8.50/month (mixed free/paid)
-- **Gross Margin**: 85% (after AWS, Twilio, payment processing)
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 - **Payback Period**: 3-4 months
 - **Customer Lifetime Value**: $180+ (18-month average retention)
 
