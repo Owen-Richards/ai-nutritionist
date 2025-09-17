@@ -21,6 +21,10 @@ python-dateutil>=2.8.0
 # Payment processing
 stripe>=7.0.0
 
+# API
+fastapi>=0.110.0
+pydantic>=2.5.0
+
 # Development dependencies
 pytest>=7.4.0
 pytest-mock>=3.11.0
@@ -32,3 +36,4 @@ mypy>=1.5.0
 
 # AWS SAM CLI (for local development)
 # aws-sam-cli>=1.100.0
+

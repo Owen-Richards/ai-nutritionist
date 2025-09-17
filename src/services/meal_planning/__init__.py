@@ -12,10 +12,36 @@ from .planner import AdaptiveMealPlanningService as MealPlanningService
 from .optimizer import MealPlanService as MealOptimizer
 from .constraints import MultiGoalService as DietaryConstraintHandler
 from .variety import MultiGoalMealPlanGenerator as VarietyManager
+from .plan_coordinator import (
+    PlanCoordinator,
+    PlanPreferences,
+    PlanGenerationCommand,
+    PlanFeedbackCommand,
+    compute_week_start,
+)
+from .repository import InMemoryPlanRepository
+from .rule_engine import RuleBasedMealPlanEngine
+from .data_store import InMemoryPlanDataStore, PlanDataStore, UserPreferenceRecord, PantryItemRecord, UserRecord
+from .ml_logging import FeatureLogger
+from .pipeline import MealPlanPipeline
 
 __all__ = [
     'MealPlanningService',
     'MealOptimizer', 
     'DietaryConstraintHandler',
-    'VarietyManager'
+    'VarietyManager',
+    'PlanCoordinator',
+    'PlanPreferences',
+    'PlanGenerationCommand',
+    'PlanFeedbackCommand',
+    'compute_week_start',
+    'InMemoryPlanRepository',
+    'RuleBasedMealPlanEngine',
+    'MealPlanPipeline',
+    'PlanDataStore',
+    'InMemoryPlanDataStore',
+    'UserPreferenceRecord',
+    'PantryItemRecord',
+    'UserRecord',
+    'FeatureLogger',
 ]
