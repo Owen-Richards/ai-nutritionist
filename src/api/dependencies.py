@@ -11,10 +11,15 @@ from services.meal_planning.rule_engine import RuleBasedMealPlanEngine
 from services.meal_planning.pipeline import MealPlanPipeline
 from services.meal_planning.data_store import InMemoryPlanDataStore
 from services.meal_planning.ml_logging import FeatureLogger
+from services.community.service import CommunityService
+from services.community.repository import CommunityRepository
+from services.community.anonymization import AnonymizationService
 
 _PLAN_REPOSITORY = InMemoryPlanRepository()
 _DATA_STORE = InMemoryPlanDataStore()
 _FEATURE_LOGGER = FeatureLogger()
+_COMMUNITY_REPOSITORY = CommunityRepository()
+_ANONYMIZATION_SERVICE = AnonymizationService()
 
 
 @lru_cache(maxsize=1)
@@ -51,4 +56,23 @@ def get_feature_logger() -> FeatureLogger:
     return _FEATURE_LOGGER
 
 
-__all__ = ["get_plan_coordinator", "get_plan_pipeline", "get_plan_data_store", "get_feature_logger"]
+@lru_cache(maxsize=1)
+def _build_community_service() -> CommunityService:
+    return CommunityService(
+        repository=_COMMUNITY_REPOSITORY,
+        anonymization_service=_ANONYMIZATION_SERVICE
+    )
+
+
+def get_community_service() -> CommunityService:
+    """Primary dependency for community routes."""
+    return _build_community_service()
+
+
+__all__ = [
+    "get_plan_coordinator", 
+    "get_plan_pipeline", 
+    "get_plan_data_store", 
+    "get_feature_logger",
+    "get_community_service"
+]
