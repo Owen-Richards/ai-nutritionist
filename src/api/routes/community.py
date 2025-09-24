@@ -7,8 +7,8 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
 
-from services.community.service import CommunityService, JoinCrewCommand, SubmitReflectionCommand, SubmitPulseCommand, CrewJoinResult
-from services.community.models import PulseMetricType
+from ...services.community.service import CommunityService, JoinCrewCommand, SubmitReflectionCommand, SubmitPulseCommand, CrewJoinResult
+from ...services.community.models import PulseMetricType
 
 from ..dependencies import get_community_service
 from ..schemas.community import (
@@ -230,7 +230,7 @@ def list_available_crews(
     parsed_crew_type = None
     if crew_type:
         try:
-            from services.community.models import CrewType
+            from ...services.community.models import CrewType
             parsed_crew_type = CrewType(crew_type)
         except ValueError:
             raise HTTPException(

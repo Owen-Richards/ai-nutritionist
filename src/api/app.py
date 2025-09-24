@@ -7,7 +7,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .routes.plan import router as plan_router
 from .routes.community import router as community_router
+from .routes.gamification import router as gamification_router
 from .middleware.rate_limiting import rate_limit_middleware
+from .middleware.caching import CachingMiddleware
 
 
 def create_app() -> FastAPI:
@@ -31,9 +33,16 @@ def create_app() -> FastAPI:
     # Add rate limiting middleware
     app.middleware("http")(rate_limit_middleware)
     
+    # Add caching middleware for widget endpoints
+    app.add_middleware(
+        CachingMiddleware,
+        enabled_paths=["/v1/gamification/summary"]
+    )
+    
     # Include routers
     app.include_router(plan_router)
     app.include_router(community_router)
+    app.include_router(gamification_router)
     
     return app
 

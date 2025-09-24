@@ -14,12 +14,16 @@ from services.meal_planning.ml_logging import FeatureLogger
 from services.community.service import CommunityService
 from services.community.repository import CommunityRepository
 from services.community.anonymization import AnonymizationService
+from services.gamification.service import GamificationService
+from services.analytics.analytics_service import AnalyticsService
 
 _PLAN_REPOSITORY = InMemoryPlanRepository()
 _DATA_STORE = InMemoryPlanDataStore()
 _FEATURE_LOGGER = FeatureLogger()
 _COMMUNITY_REPOSITORY = CommunityRepository()
 _ANONYMIZATION_SERVICE = AnonymizationService()
+_GAMIFICATION_SERVICE = GamificationService()
+_ANALYTICS_SERVICE = AnalyticsService()
 
 
 @lru_cache(maxsize=1)
@@ -69,10 +73,32 @@ def get_community_service() -> CommunityService:
     return _build_community_service()
 
 
+@lru_cache(maxsize=1)
+def _build_gamification_service() -> GamificationService:
+    return _GAMIFICATION_SERVICE
+
+
+def get_gamification_service() -> GamificationService:
+    """Primary dependency for gamification routes."""
+    return _build_gamification_service()
+
+
+@lru_cache(maxsize=1)
+def _build_analytics_service() -> AnalyticsService:
+    return _ANALYTICS_SERVICE
+
+
+def get_analytics_service() -> AnalyticsService:
+    """Primary dependency for analytics routes."""
+    return _build_analytics_service()
+
+
 __all__ = [
     "get_plan_coordinator", 
     "get_plan_pipeline", 
     "get_plan_data_store", 
     "get_feature_logger",
-    "get_community_service"
+    "get_community_service",
+    "get_gamification_service",
+    "get_analytics_service"
 ]
