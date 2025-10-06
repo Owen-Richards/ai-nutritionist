@@ -220,3 +220,20 @@ test-data/
 secrets.json
 api-keys.json
 .secrets
+
+# Installers and large binary files
+*.msi
+*.exe
+*.dmg
+*.pkg
+*.deb
+*.rpm
+*.AppImage
+sam-cli-installer.*
+aws-cli-installer.*
+
+# Large files that should use Git LFS
+*.zip
+*.tar.gz
+*.7z
+*.rar
