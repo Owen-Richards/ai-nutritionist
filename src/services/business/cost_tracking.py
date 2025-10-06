@@ -4,6 +4,7 @@ Monitors every API call, token usage, and service cost per user to ensure profit
 """
 
 import boto3
+import os
 import json
 import time
 from datetime import datetime, timedelta
@@ -17,11 +18,14 @@ class UserCostTracker:
         self.revenue_table = self.dynamodb.Table('ai-nutritionist-user-revenue')
         self.tokens_table = self.dynamodb.Table('ai-nutritionist-user-tokens')
         
-        # Cost rates (updated August 2025)
+        # Cost rates (updated Oct 2025)
         self.COST_RATES = {
             'bedrock_claude_3_haiku': 0.00025,  # per 1K input tokens
             'bedrock_claude_3_haiku_output': 0.00125,  # per 1K output tokens
-            'twilio_whatsapp': 0.0075,  # per message
+            # Messaging providers (approximate, update for your account/pricing)
+            'aws_end_user_messaging_whatsapp': 0.0075,   # per message (legacy)
+            'twilio_default': 0.0070,      # per message (SMS/WA blended est.)
+            'whatsapp_cloud': 0.0050,      # per message
             'dynamodb_read': 0.0000125,  # per read unit
             'dynamodb_write': 0.0000125,  # per write unit
             'lambda_execution': 0.000016667,  # per GB-second
@@ -277,7 +281,13 @@ class UserCostTracker:
         
         # Message costs
         if 'messages_sent' in interaction_data:
-            total_cost += interaction_data['messages_sent'] * self.COST_RATES['twilio_whatsapp']
+            provider = os.getenv('MESSAGING_PROVIDER', 'aws_end_user_messaging').lower()
+            rate_key = 'aws_end_user_messaging_whatsapp'
+            if provider == 'twilio':
+                rate_key = 'twilio_default'
+            elif provider == 'whatsapp_cloud':
+                rate_key = 'whatsapp_cloud'
+            total_cost += interaction_data['messages_sent'] * self.COST_RATES.get(rate_key, self.COST_RATES['twilio_default'])
         
         # Database costs
         if 'db_operations' in interaction_data:
@@ -367,3 +377,5 @@ class UserCostTracker:
             
         except Exception as e:
             return []
+
+

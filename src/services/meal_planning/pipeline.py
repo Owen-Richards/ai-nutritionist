@@ -86,6 +86,18 @@ def _merge_preferences(
         merged.calorie_target = overrides.calorie_target
     if overrides.grocery_cadence is not None:
         merged.grocery_cadence = overrides.grocery_cadence
+    if overrides.inventory_sources:
+        merged.inventory_sources = list(overrides.inventory_sources)
+    if overrides.preferred_channels:
+        merged.preferred_channels = list(overrides.preferred_channels)
+    if overrides.dietary_patterns:
+        merged.dietary_patterns = list(overrides.dietary_patterns)
+    if overrides.intolerances:
+        merged.intolerances = list(overrides.intolerances)
+    if overrides.preference_tags:
+        merged.preference_tags = list(overrides.preference_tags)
+    if overrides.required_ingredients:
+        merged.required_ingredients = list(overrides.required_ingredients)
 
     return merged
 

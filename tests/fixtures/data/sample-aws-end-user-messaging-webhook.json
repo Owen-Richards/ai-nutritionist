@@ -1,0 +1,7 @@
+{
+    "destinationNumber":  "+15559876543",
+    "messageBody":  "Test message from AWS End User Messaging",
+    "channelType":  "SMS",
+    "originationNumber":  "+15551234567",
+    "inboundMessageId":  "1234567890"
+}

@@ -25,6 +25,16 @@ stripe>=7.0.0
 fastapi>=0.110.0
 pydantic>=2.5.0
 
+# AI and ML optimization
+numpy>=1.24.0
+scipy>=1.11.0
+scikit-learn>=1.3.0
+
+# Async processing and performance
+asyncio-throttle>=1.0.2
+aiofiles>=23.0.0
+psutil>=5.9.0
+
 # Development dependencies
 pytest>=7.4.0
 pytest-mock>=3.11.0

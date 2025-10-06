@@ -10,7 +10,7 @@ import json
 from unittest.mock import Mock, MagicMock
 from dataclasses import asdict
 
-from src.services.personalization.goals import GoalManagementService, UserGoal, GoalType, MergedConstraints
+from src.services.personalization.goals import HealthGoalsService, HealthGoal, GoalType
 from src.services.meal_planning.optimizer import MealOptimizationService
 from src.services.multi_goal_handler import MultiGoalNutritionHandler
 

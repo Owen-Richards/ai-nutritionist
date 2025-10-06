@@ -1,0 +1,164 @@
+# AI Nutritionist Infrastructure - Core Components Only
+# This deploys the essential Lambda functions and API Gateway
+# CloudFront and S3 web hosting will be added separately
+
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: AI Nutritionist Application - Core Components
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - staging
+      - prod
+    Description: Environment name
+
+Globals:
+  Function:
+    Runtime: python3.10
+    Timeout: 30
+    MemorySize: 512
+    Environment:
+      Variables:
+        ENVIRONMENT: !Ref Environment
+        MOCK_AI_RESPONSES: true
+
+Resources:
+  # API Gateway for webhooks
+  ApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref Environment
+      Cors:
+        AllowMethods: "'POST, GET, OPTIONS'"
+        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+        AllowOrigin: "'*'"
+
+  # Lambda function for handling incoming messages
+  UniversalMessageHandlerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ai-nutritionist-universal-handler-${Environment}
+      CodeUri: ../src/handlers/
+      Handler: universal_message_handler.lambda_handler
+      Events:
+        WhatsAppWebhook:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /webhook/whatsapp
+            Method: post
+        SMSWebhook:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /webhook/sms
+            Method: post
+        TelegramWebhook:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /webhook/telegram
+            Method: post
+        MessengerWebhook:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /webhook/messenger
+            Method: post
+        GenericWebhook:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /webhook
+            Method: post
+      Environment:
+        Variables:
+          USER_DATA_TABLE_NAME: !Ref UserDataTable
+          PROMPT_CACHE_TABLE_NAME: !Ref PromptCacheTable
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserDataTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PromptCacheTable
+
+  # Lambda function for billing webhooks
+  BillingWebhookFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ai-nutritionist-billing-${Environment}
+      CodeUri: ../src/handlers/
+      Handler: billing_handler.lambda_handler
+      Events:
+        StripeWebhook:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGateway
+            Path: /webhook/stripe
+            Method: post
+
+  # Lambda function for scheduled tasks
+  SchedulerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub ai-nutritionist-scheduler-${Environment}
+      CodeUri: ../src/handlers/
+      Handler: scheduler_handler.lambda_handler
+      Events:
+        WeeklySchedule:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 8 ? * MON *)
+            Description: Generate weekly meal plans
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UserDataTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref PromptCacheTable
+
+  # DynamoDB table for user data
+  UserDataTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ai-nutritionist-users-${Environment}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+
+  # DynamoDB table for prompt caching
+  PromptCacheTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ai-nutritionist-cache-${Environment}
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: cache_key
+          AttributeType: S
+      KeySchema:
+        - AttributeName: cache_key
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+
+Outputs:
+  ApiGatewayUrl:
+    Description: API Gateway endpoint URL
+    Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/${Environment}"
+    Export:
+      Name: !Sub "${AWS::StackName}-ApiUrl"
+
+  UniversalMessageHandlerFunction:
+    Description: Universal Message Handler Lambda Function ARN
+    Value: !GetAtt UniversalMessageHandlerFunction.Arn
+
+  UserDataTable:
+    Description: DynamoDB User Data Table Name
+    Value: !Ref UserDataTable

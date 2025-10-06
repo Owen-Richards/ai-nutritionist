@@ -41,6 +41,12 @@ class EventType(str, Enum):
     WIDGET_VIEWED = "widget_viewed"
     CALENDAR_SYNCED = "calendar_synced"
     GROCERY_EXPORTED = "grocery_exported"
+    STRATEGY_REPORT_SCHEDULED = "strategy_report_scheduled"
+    RECOVERY_PLAN_CREATED = "recovery_plan_created"
+    PROGRESS_SUMMARY_PUBLISHED = "progress_summary_published"
+    MESSAGE_INGESTED = "message_ingested"
+    WEARABLE_SYNCED = "wearable_synced"
+    INVENTORY_STATE_RECORDED = "inventory_state_recorded"
 
 
 class ConsentType(str, Enum):
@@ -68,6 +74,11 @@ class EventContext(BaseModel):
     referrer: Optional[str] = None
     user_agent: Optional[str] = None
     ip_address: Optional[str] = None  # Will be hashed for privacy
+    geo_country: Optional[str] = None
+    geo_region: Optional[str] = None
+    local_timezone: Optional[str] = None
+    season: Optional[str] = None
+    weather_summary: Optional[str] = None
     
     class Config:
         extra = "allow"
@@ -418,6 +429,177 @@ class ChurnedEvent(BaseEvent):
             properties=properties,
             pii_level=PIILevel.NONE,
             **kwargs
+        )
+
+
+# Extended engagement and ingest events
+
+
+class StrategyReportScheduledEvent(BaseEvent):
+    """Event: Strategy report scheduled or delivered."""
+
+    event_type: EventType = EventType.STRATEGY_REPORT_SCHEDULED
+
+    def __init__(
+        self,
+        user_id: UUID,
+        scheduled_for: datetime,
+        channel: str,
+        cadence: str,
+        personalization_score: Optional[float] = None,
+        inventory_sources: Optional[List[str]] = None,
+        goal_focus: Optional[str] = None,
+        **kwargs,
+    ):
+        properties = {
+            "scheduled_for": scheduled_for.isoformat(),
+            "channel": channel,
+            "cadence": cadence,
+            "personalization_score": personalization_score,
+            "inventory_sources": inventory_sources or [],
+            "goal_focus": goal_focus,
+        }
+        super().__init__(
+            user_id=user_id,
+            properties=properties,
+            pii_level=PIILevel.NONE,
+            **kwargs,
+        )
+
+
+class RecoveryPlanCreatedEvent(BaseEvent):
+    """Event: Recovery plan crafted after a deviation."""
+
+    event_type: EventType = EventType.RECOVERY_PLAN_CREATED
+
+    def __init__(
+        self,
+        user_id: UUID,
+        plan_id: str,
+        deviation_reason: Optional[str],
+        channel: str,
+        scheduled_for: datetime,
+        **kwargs,
+    ):
+        properties = {
+            "plan_id": plan_id,
+            "deviation_reason": deviation_reason,
+            "channel": channel,
+            "scheduled_for": scheduled_for.isoformat(),
+        }
+        super().__init__(
+            user_id=user_id,
+            properties=properties,
+            pii_level=PIILevel.NONE,
+            **kwargs,
+        )
+
+
+class ProgressSummaryPublishedEvent(BaseEvent):
+    """Event: Long-term progress summary published."""
+
+    event_type: EventType = EventType.PROGRESS_SUMMARY_PUBLISHED
+
+    def __init__(
+        self,
+        user_id: UUID,
+        period_start: datetime,
+        period_end: datetime,
+        channel: str,
+        highlights: Optional[List[str]] = None,
+        **kwargs,
+    ):
+        properties = {
+            "period_start": period_start.isoformat(),
+            "period_end": period_end.isoformat(),
+            "channel": channel,
+            "highlights": highlights or [],
+        }
+        super().__init__(
+            user_id=user_id,
+            properties=properties,
+            pii_level=PIILevel.NONE,
+            **kwargs,
+        )
+
+
+class MessageIngestedEvent(BaseEvent):
+    """Event: Inbound user message captured and normalised."""
+
+    event_type: EventType = EventType.MESSAGE_INGESTED
+
+    def __init__(
+        self,
+        user_id: Optional[UUID],
+        platform: str,
+        tones_detected: Optional[List[str]] = None,
+        token_count: Optional[int] = None,
+        **kwargs,
+    ):
+        properties = {
+            "platform": platform,
+            "tones_detected": tones_detected or [],
+            "token_count": token_count,
+        }
+        super().__init__(
+            user_id=user_id,
+            properties=properties,
+            pii_level=PIILevel.PSEUDONYMIZED,
+            **kwargs,
+        )
+
+
+class WearableSyncEvent(BaseEvent):
+    """Event: Wearable data synced successfully."""
+
+    event_type: EventType = EventType.WEARABLE_SYNCED
+
+    def __init__(
+        self,
+        user_id: UUID,
+        provider: str,
+        metrics: Dict[str, Any],
+        synced_at: datetime,
+        **kwargs,
+    ):
+        properties = {
+            "provider": provider,
+            "metrics": metrics,
+            "synced_at": synced_at.isoformat(),
+        }
+        super().__init__(
+            user_id=user_id,
+            properties=properties,
+            pii_level=PIILevel.PSEUDONYMIZED,
+            **kwargs,
+        )
+
+
+class InventoryStateRecordedEvent(BaseEvent):
+    """Event: Pantry or inventory snapshot recorded."""
+
+    event_type: EventType = EventType.INVENTORY_STATE_RECORDED
+
+    def __init__(
+        self,
+        user_id: UUID,
+        inventory_id: str,
+        location: str,
+        freshness_index: Optional[float] = None,
+        expiring_items: Optional[int] = None,
+        **kwargs,
+    ):
+        properties = {
+            "inventory_id": inventory_id,
+            "location": location,
+            "freshness_index": freshness_index,
+            "expiring_items": expiring_items,
+        }
+        super().__init__(
+            user_id=user_id,
+            properties=properties,
+            pii_level=PIILevel.NONE,
+            **kwargs,
         )
 
 

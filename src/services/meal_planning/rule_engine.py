@@ -7,7 +7,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, List
 
-from .models import DraftMeal, PlanDraft, PlanGenerationCommand, PlanFeedbackCommand
+from .models import DraftMeal, PlanDraft, PlanGenerationCommand, PlanFeedbackCommand, PlanPreferences
 
 
 @dataclass
@@ -116,14 +116,21 @@ def _get_library_grouped() -> Dict[str, List[Dict[str, object]]]:
     return grouped
 
 
-def _filter_meals(meals: Iterable[Dict[str, object]], preferences) -> List[Dict[str, object]]:
+def _filter_meals(meals: Iterable[Dict[str, object]], preferences: PlanPreferences) -> List[Dict[str, object]]:
     filtered: List[Dict[str, object]] = []
     for candidate in meals:
         if not _supports_diet(candidate, preferences.diet):
             continue
+        if preferences.dietary_patterns and not _supports_dietary_patterns(candidate, preferences.dietary_patterns):
+            continue
         if not _respects_prep_time(candidate, preferences.max_prep_minutes):
             continue
-        if _contains_blocked_ingredient(candidate, preferences.allergies, preferences.avoid_ingredients):
+        if _contains_blocked_ingredient(
+            candidate,
+            blocked_sources=_build_blocklist(preferences),
+        ):
+            continue
+        if preferences.preference_tags and not _matches_preference_tags(candidate, preferences.preference_tags):
             continue
         filtered.append(candidate)
     return filtered
@@ -147,6 +154,19 @@ def _supports_diet(meal: Dict[str, object], diet: str | None) -> bool:
     return True
 
 
+def _supports_dietary_patterns(meal: Dict[str, object], patterns: Iterable[str]) -> bool:
+    tags = {tag.lower() for tag in meal.get("tags", [])}
+    for pattern in patterns:
+        pattern_lower = pattern.lower()
+        if pattern_lower in {"none", "any"}:
+            continue
+        # Accept matches based on tag or derivative (e.g. low_carb -> low-carb tag)
+        normalized = pattern_lower.replace(" ", "_").replace("-", "_")
+        if normalized not in tags:
+            return False
+    return True
+
+
 def _respects_prep_time(meal: Dict[str, object], max_minutes: int | None) -> bool:
     if not max_minutes:
         return True
@@ -154,11 +174,66 @@ def _respects_prep_time(meal: Dict[str, object], max_minutes: int | None) -> boo
 
 
 def _contains_blocked_ingredient(
-    meal: Dict[str, object], allergies: Iterable[str], avoid_list: Iterable[str]
+    meal: Dict[str, object], *, blocked_sources: Dict[str, List[str]]
 ) -> bool:
     lowered_ingredients = [ingredient.lower() for ingredient in meal.get("ingredients", [])]
-    blocked = {item.lower() for item in allergies or []} | {item.lower() for item in avoid_list or []}
-    return any(blocked_item in ingredient for blocked_item in blocked for ingredient in lowered_ingredients)
+
+    for source, terms in blocked_sources.items():
+        for term in terms:
+            for ingredient in lowered_ingredients:
+                if term in ingredient:
+                    return True
+    return False
+
+
+def _matches_preference_tags(meal: Dict[str, object], desired_tags: Iterable[str]) -> bool:
+    tags = {tag.lower() for tag in meal.get("tags", [])}
+    normalized_desired = {tag.lower().replace(" ", "_") for tag in desired_tags}
+    return normalized_desired.issubset(tags)
+
+
+def _build_blocklist(preferences: PlanPreferences) -> Dict[str, List[str]]:
+    blocked: Dict[str, List[str]] = {}
+
+    allergy_terms = [item.lower() for item in preferences.allergies]
+    avoid_terms = [item.lower() for item in preferences.avoid_ingredients]
+    intolerance_terms: List[str] = []
+    for intolerance in preferences.intolerances:
+        intolerance_terms.extend(_INTOLERANCE_KEYWORDS.get(intolerance.lower(), []))
+
+    merged = set(allergy_terms + avoid_terms) | set(intolerance_terms)
+    if merged:
+        blocked["blocked_terms"] = list(merged)
+    return blocked
+
+
+_INTOLERANCE_KEYWORDS: Dict[str, List[str]] = {
+    "lactose": [
+        "milk",
+        "cheese",
+        "cream",
+        "butter",
+        "yogurt",
+        "whey",
+        "casein",
+        "custard",
+        "ghee",
+    ],
+    "gluten": [
+        "wheat",
+        "barley",
+        "rye",
+        "malt",
+        "semolina",
+        "spelt",
+        "farina",
+        "triticale",
+    ],
+    "soy": ["soy", "tofu", "edamame", "soybean"],
+    "peanut": ["peanut", "groundnut"],
+    "tree_nut": ["almond", "cashew", "walnut", "pecan", "hazelnut", "pistachio"],
+    "shellfish": ["shrimp", "prawn", "lobster", "crab", "clam", "oyster", "scallop"],
+}
 
 
 def _pick_meal(

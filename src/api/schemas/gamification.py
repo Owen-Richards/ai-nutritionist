@@ -17,7 +17,7 @@ Date: September 2025
 from datetime import datetime
 from typing import Optional, List
 from uuid import UUID
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 
 from src.models.gamification import AdherenceLevel, ChallengeType, ChallengeStatus
 
@@ -107,10 +107,12 @@ class StreakSchema(BaseModel):
         description="Motivational message for user"
     )
     
-    @validator('next_milestone')
-    def next_milestone_must_be_greater_than_current(cls, v, values):
+    @field_validator('next_milestone')
+    @classmethod
+    def next_milestone_must_be_greater_than_current(cls, v, info):
         """Validate next milestone is greater than current count."""
-        if 'current_count' in values and v <= values['current_count']:
+        data = info.data if hasattr(info, 'data') else {}
+        if 'current_count' in data and v <= data['current_count']:
             raise ValueError('Next milestone must be greater than current count')
         return v
     
@@ -264,11 +266,12 @@ class GamificationSummarySchema(BaseModel):
     )
     secondary_metrics: List[str] = Field(
         ...,
-        max_items=5,
+        max_length=5,
         description="Additional metrics for larger widgets"
     )
     
-    @validator('secondary_metrics')
+    @field_validator('secondary_metrics')
+    @classmethod
     def validate_secondary_metrics(cls, v):
         """Validate secondary metrics length."""
         for metric in v:

@@ -5,11 +5,12 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routes.plan import router as plan_router
-from .routes.community import router as community_router
-from .routes.gamification import router as gamification_router
-from .middleware.rate_limiting import rate_limit_middleware
-from .middleware.caching import CachingMiddleware
+from src.api.routes.plan import router as plan_router
+from src.api.routes.community import router as community_router
+from src.api.routes.gamification import router as gamification_router
+from src.api.routes.monetization import monetization_router
+from src.api.middleware.rate_limiting import rate_limit_middleware
+from src.api.middleware.caching import CachingMiddleware
 
 
 def create_app() -> FastAPI:
@@ -43,6 +44,7 @@ def create_app() -> FastAPI:
     app.include_router(plan_router)
     app.include_router(community_router)
     app.include_router(gamification_router)
+    app.include_router(monetization_router)  # CRITICAL: Mount revenue routes
     
     return app
 

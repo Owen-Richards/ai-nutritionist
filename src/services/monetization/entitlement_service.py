@@ -220,7 +220,7 @@ class EntitlementService:
             comparison["tiers"][tier_def.tier.value] = tier_info
             
             # Add to upgrade options if higher tier
-            tier_order = [SubscriptionTier.FREE, SubscriptionTier.PLUS, SubscriptionTier.PRO]
+            tier_order = [SubscriptionTier.FREE, SubscriptionTier.PREMIUM, SubscriptionTier.ENTERPRISE]
             if tier_order.index(tier_def.tier) > tier_order.index(current_tier):
                 comparison["upgrade_options"].append(tier_def.tier.value)
         

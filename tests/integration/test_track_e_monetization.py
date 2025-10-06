@@ -47,18 +47,18 @@ class TestSubscriptionTiers:
         assert free_pricing.yearly_price_usd == Decimal("0")
         assert free_pricing.trial_days == 0
         
-        # Plus tier
-        plus_pricing = config.get_pricing_config(SubscriptionTier.PLUS)
-        assert plus_pricing.monthly_price_usd == Decimal("12.99")
-        assert plus_pricing.yearly_price_usd == Decimal("129.90")
-        assert plus_pricing.trial_days == 7
-        assert plus_pricing.yearly_discount_percent > 15  # Should have meaningful discount
+        # Premium tier
+        premium_pricing = config.get_pricing_config(SubscriptionTier.PREMIUM)
+        assert premium_pricing.monthly_price_usd == Decimal("7.99")
+        assert premium_pricing.yearly_price_usd == Decimal("79.90")
+        assert premium_pricing.trial_days == 7
+        assert premium_pricing.yearly_discount_percent > 15  # Should have meaningful discount
         
-        # Pro tier
-        pro_pricing = config.get_pricing_config(SubscriptionTier.PRO)
-        assert pro_pricing.monthly_price_usd == Decimal("24.99")
-        assert pro_pricing.yearly_price_usd == Decimal("249.90")
-        assert pro_pricing.trial_days == 7
+        # Enterprise tier
+        enterprise_pricing = config.get_pricing_config(SubscriptionTier.ENTERPRISE)
+        assert enterprise_pricing.monthly_price_usd == Decimal("99.00")
+        assert enterprise_pricing.yearly_price_usd == Decimal("990.00")
+        assert enterprise_pricing.trial_days == 7
 
     def test_feature_entitlements_by_tier(self):
         """Test feature access by subscription tier."""
@@ -73,23 +73,23 @@ class TestSubscriptionTiers:
         assert not free_tier.has_feature(FeatureFlag.ADAPTIVE_PLANNING)
         assert not free_tier.has_feature(FeatureFlag.CREWS)
         
-        # Plus tier features
-        plus_tier = config.get_tier_definition(SubscriptionTier.PLUS)
-        assert plus_tier.has_feature(FeatureFlag.BASIC_MEAL_PLANS)
-        assert plus_tier.has_feature(FeatureFlag.SMS_NUDGES)
-        assert plus_tier.has_feature(FeatureFlag.ADAPTIVE_PLANNING)
-        assert plus_tier.has_feature(FeatureFlag.WIDGETS)
-        assert not plus_tier.has_feature(FeatureFlag.CREWS)
-        assert not plus_tier.has_feature(FeatureFlag.CALENDAR_INTEGRATION)
+        # Premium tier features
+        premium_tier = config.get_tier_definition(SubscriptionTier.PREMIUM)
+        assert premium_tier.has_feature(FeatureFlag.BASIC_MEAL_PLANS)
+        assert premium_tier.has_feature(FeatureFlag.SMS_NUDGES)
+        assert premium_tier.has_feature(FeatureFlag.ADAPTIVE_PLANNING)
+        assert premium_tier.has_feature(FeatureFlag.WIDGETS)
+        assert not premium_tier.has_feature(FeatureFlag.CREWS)
+        assert not premium_tier.has_feature(FeatureFlag.CALENDAR_INTEGRATION)
         
-        # Pro tier features
-        pro_tier = config.get_tier_definition(SubscriptionTier.PRO)
-        assert pro_tier.has_feature(FeatureFlag.BASIC_MEAL_PLANS)
-        assert pro_tier.has_feature(FeatureFlag.ADAPTIVE_PLANNING)
-        assert pro_tier.has_feature(FeatureFlag.CREWS)
-        assert pro_tier.has_feature(FeatureFlag.CALENDAR_INTEGRATION)
-        assert pro_tier.has_feature(FeatureFlag.GROCERY_EXPORT)
-        assert pro_tier.has_feature(FeatureFlag.FITNESS_INTEGRATION)
+        # Enterprise tier features
+        enterprise_tier = config.get_tier_definition(SubscriptionTier.ENTERPRISE)
+        assert enterprise_tier.has_feature(FeatureFlag.BASIC_MEAL_PLANS)
+        assert enterprise_tier.has_feature(FeatureFlag.ADAPTIVE_PLANNING)
+        assert enterprise_tier.has_feature(FeatureFlag.CREWS)
+        assert enterprise_tier.has_feature(FeatureFlag.CALENDAR_INTEGRATION)
+        assert enterprise_tier.has_feature(FeatureFlag.GROCERY_EXPORT)
+        assert enterprise_tier.has_feature(FeatureFlag.FITNESS_INTEGRATION)
 
     def test_usage_limits_by_tier(self):
         """Test usage limits for different tiers."""
@@ -106,7 +106,7 @@ class TestSubscriptionTiers:
         assert sms_entitlement.limit == 3  # 3 SMS per week
         
         # Plus tier limits
-        plus_tier = config.get_tier_definition(SubscriptionTier.PLUS)
+        plus_tier = config.get_tier_definition(SubscriptionTier.PREMIUM)
         plus_meal_plans = plus_tier.get_feature_entitlement(FeatureFlag.BASIC_MEAL_PLANS)
         plus_sms = plus_tier.get_feature_entitlement(FeatureFlag.SMS_NUDGES)
         
@@ -114,7 +114,7 @@ class TestSubscriptionTiers:
         assert plus_sms.limit == 7  # Daily SMS
         
         # Pro tier limits (unlimited)
-        pro_tier = config.get_tier_definition(SubscriptionTier.PRO)
+        pro_tier = config.get_tier_definition(SubscriptionTier.ENTERPRISE)
         pro_meal_plans = pro_tier.get_feature_entitlement(FeatureFlag.BASIC_MEAL_PLANS)
         pro_sms = pro_tier.get_feature_entitlement(FeatureFlag.SMS_NUDGES)
         
@@ -139,7 +139,7 @@ class TestBillingIntegration:
         """Test subscription model validation."""
         subscription = Subscription(
             user_id=user_id,
-            tier=SubscriptionTier.PLUS,
+            tier=SubscriptionTier.PREMIUM,
             status=SubscriptionStatus.ACTIVE,
             billing_interval=BillingInterval.MONTHLY,
             price_cents=1299,
@@ -158,7 +158,7 @@ class TestBillingIntegration:
         
         subscription = Subscription(
             user_id=user_id,
-            tier=SubscriptionTier.PLUS,
+            tier=SubscriptionTier.PREMIUM,
             status=SubscriptionStatus.TRIALING,
             billing_interval=BillingInterval.MONTHLY,
             trial_end=trial_end,
@@ -202,7 +202,7 @@ class TestBillingIntegration:
             user_id=user_id,
             email="test@example.com",
             name="Test User",
-            tier=SubscriptionTier.PLUS,
+            tier=SubscriptionTier.PREMIUM,
             interval=BillingInterval.MONTHLY
         )
         
@@ -284,7 +284,7 @@ class TestEntitlementSystem:
         user_id = uuid4()
         subscription = Subscription(
             user_id=user_id,
-            tier=SubscriptionTier.PLUS,
+            tier=SubscriptionTier.PREMIUM,
             status=SubscriptionStatus.ACTIVE,
             billing_interval=BillingInterval.MONTHLY,
             price_cents=1299
@@ -441,8 +441,8 @@ class TestPaywallSystem:
         
         # Check offers include Plus and Pro tiers
         tier_offers = {offer.tier for offer in config.offers}
-        assert SubscriptionTier.PLUS in tier_offers
-        assert SubscriptionTier.PRO in tier_offers
+        assert SubscriptionTier.PREMIUM in tier_offers
+        assert SubscriptionTier.ENTERPRISE in tier_offers
 
     def test_experiment_variant_assignment(self, paywall_service, user_id):
         """Test consistent variant assignment for A/B tests."""
@@ -477,7 +477,7 @@ class TestPaywallSystem:
         
         # Check feature tier requirements
         for feature in config.features:
-            assert feature.tier_required in [SubscriptionTier.PLUS, SubscriptionTier.PRO]
+            assert feature.tier_required in [SubscriptionTier.PREMIUM, SubscriptionTier.ENTERPRISE]
 
     def test_pricing_offers_with_discounts(self, paywall_service, user_id):
         """Test pricing offers with yearly discounts."""
@@ -510,7 +510,7 @@ class TestPaywallSystem:
         # Track action (should not raise exception)
         paywall_service.track_paywall_action(
             user_id, config, "upgrade", 
-            SubscriptionTier.PLUS, BillingInterval.MONTHLY
+            SubscriptionTier.PREMIUM, BillingInterval.MONTHLY
         )
 
 
@@ -681,7 +681,7 @@ class TestIntegrationWorkflows:
         # 4. Simulate upgrade to Plus
         plus_subscription = Subscription(
             user_id=user_id,
-            tier=SubscriptionTier.PLUS,
+            tier=SubscriptionTier.PREMIUM,
             status=SubscriptionStatus.ACTIVE,
             billing_interval=BillingInterval.MONTHLY,
             price_cents=1299

@@ -316,7 +316,7 @@ class ExperimentService:
                     description="Stop if churn exceeds 10%"
                 )
             ],
-            target_subscription_tiers=[SubscriptionTier.FREE, SubscriptionTier.PLUS],
+            target_subscription_tiers=[SubscriptionTier.FREE, SubscriptionTier.PREMIUM],
             primary_metric="retention_d7",
             secondary_metrics=["conversion_rate", "churn_rate"]
         )

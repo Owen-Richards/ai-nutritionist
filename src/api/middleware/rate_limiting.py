@@ -1,4 +1,4 @@
-"""Rate limiting middleware for community endpoints."""
+"""Rate limiting middleware for community endpoints with distributed backend."""
 
 from __future__ import annotations
 
@@ -9,6 +9,20 @@ from typing import Dict, List, Optional, Tuple
 
 from fastapi import HTTPException, Request, Response, status
 from fastapi.responses import JSONResponse
+
+# Import the distributed rate limiting with error handling
+try:
+    from src.services.infrastructure.distributed_rate_limiting import check_rate_limit, track_service_cost
+    DISTRIBUTED_RATE_LIMITING_AVAILABLE = True
+except ImportError:
+    DISTRIBUTED_RATE_LIMITING_AVAILABLE = False
+    
+    # Fallback functions
+    async def check_rate_limit(identifier: str, action: str) -> tuple:
+        return True, {'remaining': 100, 'reset_time': 0}
+    
+    async def track_service_cost(service: str, cost: float, user_id: str = None) -> dict:
+        return {'service': service, 'cost': cost}
 
 
 class RateLimiter:
@@ -80,8 +94,23 @@ class RateLimiter:
         
         self._last_cleanup = current_time
     
-    def check_sms_rate_limit(self, user_id: str) -> Tuple[bool, Optional[int]]:
-        """Check if user can send SMS. Returns (allowed, retry_after_seconds)."""
+    async def check_sms_rate_limit(self, user_id: str) -> Tuple[bool, Optional[int]]:
+        """Check if user can send SMS using distributed rate limiting."""
+        try:
+            allowed, rate_info = await check_rate_limit(user_id, 'sms_messages')
+            
+            if not allowed:
+                retry_after = max(1, rate_info.get('reset_time', 0) - int(time.time()))
+                return False, retry_after
+            
+            return True, None
+            
+        except Exception as e:
+            # Fallback to local rate limiting if distributed fails
+            return self._check_sms_rate_limit_local(user_id)
+    
+    def _check_sms_rate_limit_local(self, user_id: str) -> Tuple[bool, Optional[int]]:
+        """Fallback local SMS rate limiting."""
         self._cleanup_old_entries()
         
         current_time = time.time()
@@ -103,8 +132,23 @@ class RateLimiter:
         window.append(current_time)
         return True, None
     
-    def check_api_rate_limit(self, user_id: str) -> Tuple[bool, Optional[int]]:
-        """Check if user can make API call. Returns (allowed, retry_after_seconds)."""
+    async def check_api_rate_limit(self, user_id: str) -> Tuple[bool, Optional[int]]:
+        """Check if user can make API call using distributed rate limiting."""
+        try:
+            allowed, rate_info = await check_rate_limit(user_id, 'api_requests')
+            
+            if not allowed:
+                retry_after = max(1, rate_info.get('reset_time', 0) - int(time.time()))
+                return False, retry_after
+            
+            return True, None
+            
+        except Exception as e:
+            # Fallback to local rate limiting if distributed fails
+            return self._check_api_rate_limit_local(user_id)
+    
+    def _check_api_rate_limit_local(self, user_id: str) -> Tuple[bool, Optional[int]]:
+        """Fallback local API rate limiting."""
         self._cleanup_old_entries()
         
         current_time = time.time()

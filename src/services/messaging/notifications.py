@@ -19,7 +19,7 @@ class AWSMessagingService:
     
     def __init__(self):
         self.sms_client = boto3.client('pinpoint-sms-voice-v2')
-        self.whatsapp_client = boto3.client('pinpoint')  # For WhatsApp via Pinpoint
+        self.whatsapp_client = boto3.client('pinpoint')  # For WhatsApp via AWS End User Messaging (legacy)
         self.ssm = boto3.client('ssm')
         self.sqs = boto3.client('sqs')
         
@@ -47,7 +47,7 @@ class AWSMessagingService:
 
     def send_whatsapp_message(self, to_number: str, message: str, country_code: str = None) -> Dict[str, Any]:
         """
-        Send WhatsApp message using AWS End User Messaging (Pinpoint)
+        Send WhatsApp message using AWS End User Messaging (legacy)
         
         Args:
             to_number: Phone number in international format (+1234567890)
@@ -68,7 +68,7 @@ class AWSMessagingService:
             if not whatsapp_number:
                 return {'success': False, 'error': 'No WhatsApp number configured'}
             
-            # Send WhatsApp message via Pinpoint
+            # Send WhatsApp message via AWS End User Messaging (legacy)
             response = self.whatsapp_client.send_messages(
                 ApplicationId=self.whatsapp_application_id,
                 MessageRequest={

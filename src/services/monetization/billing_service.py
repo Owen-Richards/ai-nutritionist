@@ -1,7 +1,4 @@
-"""Stripe billing integration for Track E2.
-
-Handles Stripe customers, subscriptions, webhooks, and entitlement middleware.
-"""
+"""Stripe billing integration for Track E - Handles Stripe customers, subscriptions, webhooks, and entitlement middleware."""
 
 from __future__ import annotations
 
@@ -9,6 +6,8 @@ import hashlib
 import hmac
 import json
 import logging
+import os
+import boto3
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Tuple
 from uuid import UUID
@@ -30,21 +29,67 @@ logger = logging.getLogger(__name__)
 
 
 class StripeConfig:
-    """Stripe configuration and credentials."""
+    """Stripe configuration and credentials with secure secrets management."""
     
     def __init__(self):
-        # In production, load from environment variables
-        self.secret_key = "sk_test_..."  # Stripe secret key
-        self.publishable_key = "pk_test_..."  # Stripe publishable key
-        self.webhook_secret = "whsec_..."  # Webhook endpoint secret
+        # Load from environment variables and AWS Secrets Manager
+        self.secret_key = self._get_secret("STRIPE_SECRET_KEY", "stripe/production/secret_key")
+        self.publishable_key = self._get_secret("STRIPE_PUBLISHABLE_KEY", "stripe/production/publishable_key")
+        self.webhook_secret = self._get_secret("STRIPE_WEBHOOK_SECRET", "stripe/production/webhook_secret")
         
-        # Price IDs for each tier/interval combination
+        # Price IDs for each tier/interval combination - updated for new pricing
         self.price_ids = {
-            (SubscriptionTier.PLUS, BillingInterval.MONTHLY): "price_plus_monthly",
-            (SubscriptionTier.PLUS, BillingInterval.YEARLY): "price_plus_yearly",
-            (SubscriptionTier.PRO, BillingInterval.MONTHLY): "price_pro_monthly",
-            (SubscriptionTier.PRO, BillingInterval.YEARLY): "price_pro_yearly"
+            (SubscriptionTier.PREMIUM, BillingInterval.MONTHLY): self._get_secret("STRIPE_PREMIUM_MONTHLY_PRICE_ID", "stripe/prices/premium_monthly"),
+            (SubscriptionTier.PREMIUM, BillingInterval.YEARLY): self._get_secret("STRIPE_PREMIUM_YEARLY_PRICE_ID", "stripe/prices/premium_yearly"),
+            (SubscriptionTier.ENTERPRISE, BillingInterval.MONTHLY): self._get_secret("STRIPE_ENTERPRISE_MONTHLY_PRICE_ID", "stripe/prices/enterprise_monthly"),
+            (SubscriptionTier.ENTERPRISE, BillingInterval.YEARLY): self._get_secret("STRIPE_ENTERPRISE_YEARLY_PRICE_ID", "stripe/prices/enterprise_yearly")
         }
+        
+        # Initialize Stripe with secure key
+        stripe.api_key = self.secret_key
+
+    def _get_secret(self, env_var: str, secrets_manager_key: str) -> str:
+        """Securely retrieve secrets from environment or AWS Secrets Manager."""
+        # First try environment variable
+        value = os.getenv(env_var)
+        if value:
+            return value
+            
+        # Fallback to AWS Secrets Manager in production
+        try:
+            if os.getenv("AWS_REGION"):
+                session = boto3.session.Session()
+                client = session.client("secretsmanager")
+                response = client.get_secret_value(SecretId=secrets_manager_key)
+                secret_data = json.loads(response["SecretString"]) if response["SecretString"].startswith("{") else response["SecretString"]
+                return secret_data if isinstance(secret_data, str) else secret_data.get(env_var, "")
+        except Exception as e:
+            logger.warning(f"Failed to retrieve secret {secrets_manager_key}: {e}")
+            
+        # Development fallback - never use in production
+        if os.getenv("ENVIRONMENT", "production").lower() != "production":
+            logger.warning(f"Using development fallback for {env_var}")
+            if "secret_key" in env_var.lower():
+                return "sk_test_development_key_replace_in_production"
+            elif "publishable" in env_var.lower():
+                return "pk_test_development_key_replace_in_production"
+            elif "webhook" in env_var.lower():
+                return "whsec_development_secret_replace_in_production"
+            else:
+                return f"price_development_{env_var.split('_')[-3].lower()}_{env_var.split('_')[-1].lower()}"
+        
+        raise ValueError(f"Missing required secret: {env_var} / {secrets_manager_key}")
+
+    def validate_webhook_signature(self, payload: bytes, signature: str) -> bool:
+        """Validate Stripe webhook signature for security."""
+        try:
+            stripe.Webhook.construct_event(
+                payload, signature, self.webhook_secret
+            )
+            return True
+        except (ValueError, stripe.error.SignatureVerificationError) as e:
+            logger.error(f"Webhook signature validation failed: {e}")
+            return False
         
         # Initialize Stripe
         stripe.api_key = self.secret_key

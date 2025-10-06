@@ -375,7 +375,7 @@ class RateLimitValidator:
         api_limits = {
             'edamam': 10,  # per minute
             'openai': 50,  # per minute  
-            'twilio': 100, # per minute
+            'aws_end_user_messaging': 100, # per minute
         }
         
         limit = api_limits.get(api_name, 60)  # default 60/minute

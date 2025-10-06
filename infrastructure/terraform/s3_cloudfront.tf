@@ -119,7 +119,7 @@ resource "aws_cloudfront_distribution" "web_frontend" {
 
   # API Gateway origin for backend requests
   origin {
-    domain_name = replace(aws_api_gateway_rest_api.main.execution_arn, "arn:aws:execute-api:${var.aws_region}:${data.aws_caller_identity.current.account_id}:", "")
+    domain_name = "${aws_api_gateway_rest_api.main.id}.execute-api.${var.aws_region}.amazonaws.com"
     origin_id   = "APIGateway"
     origin_path = "/${var.environment}"
 

@@ -47,114 +47,10 @@ variable "enable_family_sharing" {
   default     = true
 }
 
-# AWS End User Messaging SMS Configuration
-variable "enable_aws_sms" {
-  description = "Enable AWS End User Messaging SMS instead of Twilio"
-  type        = bool
-  default     = true
-}
-
-variable "sms_phone_country" {
-  description = "Country code for SMS phone number (e.g., US, UK, CA)"
-  type        = string
-  default     = "US"
-  validation {
-    condition     = contains(["US", "UK", "CA", "AU", "DE", "FR", "JP", "SG", "BR", "IN"], var.sms_phone_country)
-    error_message = "SMS phone country must be a supported country code."
-  }
-}
-
-variable "sms_message_type" {
-  description = "Type of SMS messages (TRANSACTIONAL or PROMOTIONAL)"
-  type        = string
-  default     = "TRANSACTIONAL"
-  validation {
-    condition     = contains(["TRANSACTIONAL", "PROMOTIONAL"], var.sms_message_type)
-    error_message = "SMS message type must be TRANSACTIONAL or PROMOTIONAL."
-  }
-}
-
-variable "sms_retention_days" {
-  description = "Number of days to retain SMS event logs"
-  type        = number
-  default     = 30
-  validation {
-    condition     = var.sms_retention_days >= 1 && var.sms_retention_days <= 365
-    error_message = "SMS retention days must be between 1 and 365."
-  }
-}
-
 variable "enable_monitoring" {
   description = "Enable CloudWatch monitoring and alarms"
   type        = bool
   default     = true
-}
-
-# Spam Protection and Cost Control Variables
-variable "max_messages_per_hour" {
-  description = "Maximum SMS messages per phone number per hour"
-  type        = number
-  default     = 10
-  validation {
-    condition     = var.max_messages_per_hour >= 1 && var.max_messages_per_hour <= 100
-    error_message = "Max messages per hour must be between 1 and 100."
-  }
-}
-
-variable "max_messages_per_day" {
-  description = "Maximum SMS messages per phone number per day"
-  type        = number
-  default     = 50
-  validation {
-    condition     = var.max_messages_per_day >= 1 && var.max_messages_per_day <= 500
-    error_message = "Max messages per day must be between 1 and 500."
-  }
-}
-
-variable "daily_cost_limit" {
-  description = "Daily cost limit for SMS services in USD"
-  type        = number
-  default     = 50.0
-  validation {
-    condition     = var.daily_cost_limit >= 1.0 && var.daily_cost_limit <= 1000.0
-    error_message = "Daily cost limit must be between $1.00 and $1000.00."
-  }
-}
-
-variable "enable_waf_protection" {
-  description = "Enable WAF protection for API endpoints"
-  type        = bool
-  default     = true
-}
-
-variable "waf_rate_limit" {
-  description = "WAF rate limit per IP address (requests per 5 minutes)"
-  type        = number
-  default     = 2000
-  validation {
-    condition     = var.waf_rate_limit >= 100 && var.waf_rate_limit <= 20000
-    error_message = "WAF rate limit must be between 100 and 20000."
-  }
-}
-
-variable "blocked_countries" {
-  description = "List of country codes to block (e.g., ['CN', 'RU'])"
-  type        = list(string)
-  default     = []
-  validation {
-    condition     = length(var.blocked_countries) <= 20
-    error_message = "Cannot block more than 20 countries."
-  }
-}
-
-variable "spam_detection_sensitivity" {
-  description = "Spam detection sensitivity level (low, medium, high)"
-  type        = string
-  default     = "medium"
-  validation {
-    condition     = contains(["low", "medium", "high"], var.spam_detection_sensitivity)
-    error_message = "Spam detection sensitivity must be low, medium, or high."
-  }
 }
 
 variable "gdpr_compliance_enabled" {
@@ -185,19 +81,6 @@ variable "cost_alert_threshold" {
 # Security Configuration
 variable "enable_waf" {
   description = "Enable AWS WAF for API Gateway"
-  type        = bool
-  default     = true
-}
-
-# Privacy and Compliance
-variable "gdpr_compliance_enabled" {
-  description = "Enable GDPR compliance features including consent tracking and audit logs"
-  type        = bool
-  default     = true
-}
-
-variable "enable_family_sharing" {
-  description = "Enable family nutrition sharing features with privacy controls"
   type        = bool
   default     = true
 }
@@ -253,28 +136,14 @@ variable "enable_webhook_validation" {
   default     = true
 }
 
-# Monitoring and Observability
 variable "enable_detailed_monitoring" {
-  description = "Enable detailed CloudWatch monitoring"
-  type        = bool
-  default     = true
-}
-
-variable "enable_xray_tracing" {
-  description = "Enable X-Ray distributed tracing"
+  description = "Enable detailed CloudWatch method metrics"
   type        = bool
   default     = true
 }
 
 variable "enable_api_gateway_logging" {
   description = "Enable API Gateway access logging"
-  type        = bool
-  default     = true
-}
-
-# Security and WAF
-variable "enable_waf" {
-  description = "Enable AWS WAF for API Gateway"
   type        = bool
   default     = true
 }
@@ -517,4 +386,252 @@ variable "additional_tags" {
   description = "Additional tags to apply to all resources"
   type        = map(string)
   default     = {}
+}
+
+# VPC Flow Logs
+variable "enable_vpc_flow_logs" {
+  description = "Enable VPC Flow Logs for security monitoring"
+  type        = bool
+  default     = true
+}
+
+# Security Services
+variable "enable_guardduty" {
+  description = "Enable AWS GuardDuty for threat detection"
+  type        = bool
+  default     = true
+}
+
+variable "enable_security_hub" {
+  description = "Enable AWS Security Hub for centralized security findings"
+  type        = bool
+  default     = true
+}
+
+variable "enable_aws_config" {
+  description = "Enable AWS Config for compliance monitoring"
+  type        = bool
+  default     = true
+}
+
+# Backup Configuration
+variable "enable_aws_backup" {
+  description = "Enable AWS Backup for automated backups"
+  type        = bool
+  default     = true
+}
+
+variable "backup_schedule" {
+  description = "Backup schedule in cron format"
+  type        = string
+  default     = "cron(0 4 * * ? *)"  # Daily at 4 AM UTC
+}
+
+variable "backup_retention_days" {
+  description = "Backup retention period in days"
+  type        = number
+  default     = 35
+}
+
+variable "backup_cold_storage_after" {
+  description = "Move backups to cold storage after this many days"
+  type        = number
+  default     = 30
+}
+
+variable "backup_cross_region_destination" {
+  description = "Cross-region destination for backup replication"
+  type        = string
+  default     = ""
+}
+
+# ElastiCache Configuration
+variable "enable_elasticache" {
+  description = "Enable ElastiCache Redis for caching"
+  type        = bool
+  default     = true
+}
+
+variable "elasticache_node_type" {
+  description = "ElastiCache node type"
+  type        = string
+  default     = "cache.t3.micro"
+}
+
+variable "elasticache_num_nodes" {
+  description = "Number of ElastiCache nodes"
+  type        = number
+  default     = 1
+  validation {
+    condition     = var.elasticache_num_nodes >= 1 && var.elasticache_num_nodes <= 6
+    error_message = "ElastiCache node count must be between 1 and 6."
+  }
+}
+
+variable "elasticache_auth_token" {
+  description = "ElastiCache authentication token"
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "elasticache_maintenance_window" {
+  description = "ElastiCache maintenance window"
+  type        = string
+  default     = "sun:03:00-sun:04:00"
+}
+
+variable "elasticache_snapshot_retention" {
+  description = "ElastiCache snapshot retention in days"
+  type        = number
+  default     = 7
+}
+
+variable "elasticache_snapshot_window" {
+  description = "ElastiCache snapshot window"
+  type        = string
+  default     = "02:00-03:00"
+}
+
+# Enhanced Lambda Configuration
+variable "lambda_reserved_concurrency" {
+  description = "Reserved concurrency for Lambda functions"
+  type        = number
+  default     = 100
+}
+
+variable "lambda_provisioned_concurrency" {
+  description = "Provisioned concurrency for Lambda functions"
+  type        = number
+  default     = 0
+}
+
+# Enhanced Monitoring
+variable "enable_xray_sampling" {
+  description = "Enable X-Ray sampling rules"
+  type        = bool
+  default     = true
+}
+
+variable "xray_sampling_rate" {
+  description = "X-Ray sampling rate (0.0 to 1.0)"
+  type        = number
+  default     = 0.1
+  validation {
+    condition     = var.xray_sampling_rate >= 0.0 && var.xray_sampling_rate <= 1.0
+    error_message = "X-Ray sampling rate must be between 0.0 and 1.0."
+  }
+}
+
+# Database Performance Insights
+variable "enable_dynamodb_contributor_insights" {
+  description = "Enable DynamoDB Contributor Insights"
+  type        = bool
+  default     = true
+}
+
+# Enhanced Security
+variable "enable_secrets_rotation" {
+  description = "Enable automatic rotation of secrets"
+  type        = bool
+  default     = true
+}
+
+variable "secrets_rotation_days" {
+  description = "Secrets rotation interval in days"
+  type        = number
+  default     = 30
+}
+
+# Performance Optimization
+variable "lambda_architecture" {
+  description = "Lambda function architecture (x86_64 or arm64)"
+  type        = string
+  default     = "arm64"  # Graviton2 for better price/performance
+  validation {
+    condition     = contains(["x86_64", "arm64"], var.lambda_architecture)
+    error_message = "Lambda architecture must be x86_64 or arm64."
+  }
+}
+
+# Multi-Region Support
+variable "enable_multi_region" {
+  description = "Enable multi-region deployment"
+  type        = bool
+  default     = false
+}
+
+variable "secondary_regions" {
+  description = "List of secondary regions for multi-region deployment"
+  type        = list(string)
+  default     = []
+}
+
+# Enhanced API Gateway
+variable "api_gateway_minimum_compression_size" {
+  description = "Minimum compression size for API Gateway"
+  type        = number
+  default     = 1024
+}
+
+variable "api_gateway_binary_media_types" {
+  description = "Binary media types for API Gateway"
+  type        = list(string)
+  default     = ["image/jpeg", "image/png", "application/pdf"]
+}
+
+# Advanced WAF Rules
+variable "enable_aws_managed_waf_rules" {
+  description = "Enable AWS Managed WAF rules"
+  type        = bool
+  default     = true
+}
+
+variable "waf_blocked_countries" {
+  description = "List of country codes to block in WAF"
+  type        = list(string)
+  default     = []
+}
+
+variable "enable_ddos_protection" {
+  description = "Enable AWS Shield Advanced for DDoS protection"
+  type        = bool
+  default     = false  # Expensive - enable for production only
+}
+
+# SQS and DLQ Configuration
+variable "enable_dlq_processing" {
+  description = "Enable Dead Letter Queue processing with retry logic"
+  type        = bool
+  default     = true
+}
+
+variable "enable_async_processing" {
+  description = "Enable asynchronous message processing queue"
+  type        = bool
+  default     = true
+}
+
+variable "dlq_message_retention_seconds" {
+  description = "Message retention in DLQ in seconds"
+  type        = number
+  default     = 1209600  # 14 days
+}
+
+variable "failed_message_retention_seconds" {
+  description = "Message retention in failed message queue in seconds"
+  type        = number
+  default     = 604800  # 7 days
+}
+
+variable "async_message_retention_seconds" {
+  description = "Message retention in async processing queue in seconds"
+  type        = number
+  default     = 86400  # 1 day
+}
+
+variable "dlq_processor_max_concurrency" {
+  description = "Maximum concurrency for DLQ processor Lambda"
+  type        = number
+  default     = 10
 }

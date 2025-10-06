@@ -21,6 +21,12 @@ class PlanPreferences:
     pantry_items: List[str] = field(default_factory=list)
     calorie_target: Optional[int] = None
     grocery_cadence: Optional[str] = None
+    inventory_sources: List[str] = field(default_factory=list)
+    preferred_channels: List[str] = field(default_factory=list)
+    dietary_patterns: List[str] = field(default_factory=list)
+    intolerances: List[str] = field(default_factory=list)
+    preference_tags: List[str] = field(default_factory=list)
+    required_ingredients: List[str] = field(default_factory=list)
 
 
 @dataclass
@@ -34,6 +40,8 @@ class PlanGenerationCommand:
     context: Dict[str, Any] = field(default_factory=dict)
     request_metadata: Dict[str, Any] = field(default_factory=dict)
     idempotency_key: Optional[str] = None
+    inventory_snapshot_id: Optional[str] = None
+    pantry_state_version: Optional[str] = None
 
 
 @dataclass

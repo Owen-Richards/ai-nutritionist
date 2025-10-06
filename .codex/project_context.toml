@@ -1,0 +1,94 @@
+# Codex AI Integration Configuration
+# Project-specific context and preferences
+
+[project_context]
+name = "AI Nutritionist Assistant"
+description = "Serverless AI-powered nutrition coaching with AWS Bedrock"
+architecture = "clean_architecture"
+deployment = "aws_serverless"
+
+# Technology Stack
+[tech_stack]
+runtime = "python3.11"
+framework = "fastapi"
+ai_service = "aws_bedrock"
+database = "dynamodb"
+messaging = "aws_end_user_messaging"
+infrastructure = "terraform"
+deployment_tool = "aws_sam"
+
+# AWS Services Used
+[aws_services]
+compute = ["lambda", "api_gateway"]
+storage = ["dynamodb", "s3", "parameter_store"]
+ai_ml = ["bedrock"]
+messaging = ["aws_end_user_messaging", "sns", "ses"]
+monitoring = ["cloudwatch", "xray"]
+security = ["kms", "iam", "waf"]
+networking = ["cloudfront", "route53"]
+
+# Code Generation Preferences
+[code_generation]
+style = "clean_architecture"
+patterns = ["dependency_injection", "repository_pattern", "service_layer"]
+error_handling = "comprehensive"
+logging = "structured"
+testing = "comprehensive_with_mocks"
+documentation = "google_style_docstrings"
+
+# Domain Models
+[domain_models]
+user = ["UserProfile", "UserPreferences", "UserGoals"]
+nutrition = ["MealPlan", "Recipe", "NutritionData", "Ingredient"]
+business = ["Subscription", "Billing", "Usage", "Feedback"]
+messaging = ["Message", "Conversation", "Channel"]
+analytics = ["Event", "Metric", "Report"]
+
+# Service Layer Structure
+[services]
+core_services = [
+    "meal_planning",
+    "nutrition_analysis", 
+    "user_personalization",
+    "ai_generation"
+]
+infrastructure_services = [
+    "messaging",
+    "caching", 
+    "monitoring",
+    "privacy_compliance"
+]
+business_services = [
+    "billing",
+    "analytics",
+    "gamification",
+    "community"
+]
+
+# Integration Patterns
+[integrations]
+external_apis = ["edamam", "stripe"]
+aws_native = ["bedrock", "aws_end_user_messaging", "dynamodb"]
+third_party = ["calendar", "grocery", "fitness"]
+
+# Security Considerations
+[security]
+authentication = "aws_cognito"
+authorization = "iam_roles"
+encryption = "kms_managed"
+input_validation = "pydantic_models"
+rate_limiting = "api_gateway_throttling"
+
+# Performance Optimization
+[performance]
+caching_strategy = "prompt_caching"
+concurrency = "asyncio"
+cost_optimization = "bedrock_prompt_caching"
+monitoring = "cloudwatch_insights"
+
+# Testing Strategy
+[testing]
+unit_tests = "pytest_with_mocks"
+integration_tests = "real_aws_services"
+load_testing = "locust"
+security_testing = "bandit"

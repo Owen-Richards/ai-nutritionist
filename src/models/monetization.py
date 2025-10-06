@@ -17,8 +17,8 @@ from pydantic import BaseModel, Field
 class SubscriptionTier(str, Enum):
     """Subscription tier levels."""
     FREE = "free"
-    PLUS = "plus"
-    PRO = "pro"
+    PREMIUM = "premium"
+    ENTERPRISE = "enterprise"
 
 
 class BillingInterval(str, Enum):
@@ -45,13 +45,13 @@ class FeatureFlag(str, Enum):
     BASIC_MEAL_PLANS = "basic_meal_plans"
     SMS_NUDGES = "sms_nudges"
     
-    # Plus features
+    # Premium features
     ADAPTIVE_PLANNING = "adaptive_planning"
     WIDGETS = "widgets"
     ADVANCED_NUTRITION = "advanced_nutrition"
     MEAL_CUSTOMIZATION = "meal_customization"
     
-    # Pro features
+    # Enterprise features
     CREWS = "crews"
     CALENDAR_INTEGRATION = "calendar_integration"
     GROCERY_EXPORT = "grocery_export"
@@ -194,16 +194,16 @@ class MonetizationConfig:
                 yearly_price_cents=0,
                 trial_days=0
             ),
-            SubscriptionTier.PLUS: PricingConfig(
-                tier=SubscriptionTier.PLUS,
-                monthly_price_cents=1299,  # $12.99
-                yearly_price_cents=12990,  # $129.90 (17% discount - 2 months free)
+            SubscriptionTier.PREMIUM: PricingConfig(
+                tier=SubscriptionTier.PREMIUM,
+                monthly_price_cents=799,  # $7.99
+                yearly_price_cents=7990,  # $79.90 (17% discount - 2 months free)
                 trial_days=7
             ),
-            SubscriptionTier.PRO: PricingConfig(
-                tier=SubscriptionTier.PRO,
-                monthly_price_cents=2499,  # $24.99
-                yearly_price_cents=24990,  # $249.90 (17% discount - 2 months free)
+            SubscriptionTier.ENTERPRISE: PricingConfig(
+                tier=SubscriptionTier.ENTERPRISE,
+                monthly_price_cents=9900,  # $99.00
+                yearly_price_cents=99000,  # $990.00 (17% discount - 2 months free)
                 trial_days=7
             )
         }
@@ -231,11 +231,11 @@ class MonetizationConfig:
                     )
                 ]
             ),
-            SubscriptionTier.PLUS: TierDefinition(
-                tier=SubscriptionTier.PLUS,
-                name="Plus",
-                description="Adaptive planning with widgets and advanced nutrition",
-                pricing=self._pricing_configs[SubscriptionTier.PLUS],
+            SubscriptionTier.PREMIUM: TierDefinition(
+                tier=SubscriptionTier.PREMIUM,
+                name="Premium",
+                description="Unlimited plans, nutrition analysis with widgets and advanced features",
+                pricing=self._pricing_configs[SubscriptionTier.PREMIUM],
                 features=[
                     # Inherit free features
                     FeatureEntitlement(
@@ -250,7 +250,7 @@ class MonetizationConfig:
                         limit=7,  # Daily SMS
                         metadata={"sms_per_week": 7}
                     ),
-                    # Plus exclusive features
+                    # Premium exclusive features
                     FeatureEntitlement(
                         feature=FeatureFlag.ADAPTIVE_PLANNING,
                         enabled=True,
@@ -273,13 +273,13 @@ class MonetizationConfig:
                     )
                 ]
             ),
-            SubscriptionTier.PRO: TierDefinition(
-                tier=SubscriptionTier.PRO,
-                name="Pro",
-                description="Complete nutrition platform with crews, calendar, and integrations",
-                pricing=self._pricing_configs[SubscriptionTier.PRO],
+            SubscriptionTier.ENTERPRISE: TierDefinition(
+                tier=SubscriptionTier.ENTERPRISE,
+                name="Enterprise",
+                description="Complete nutrition platform with 10 seats, API access, and analytics",
+                pricing=self._pricing_configs[SubscriptionTier.ENTERPRISE],
                 features=[
-                    # Inherit Plus features (unlimited for Pro)
+                    # Inherit Premium features (unlimited for Enterprise)
                     FeatureEntitlement(
                         feature=FeatureFlag.BASIC_MEAL_PLANS,
                         enabled=True,
@@ -296,7 +296,7 @@ class MonetizationConfig:
                     FeatureEntitlement(feature=FeatureFlag.WIDGETS, enabled=True),
                     FeatureEntitlement(feature=FeatureFlag.ADVANCED_NUTRITION, enabled=True),
                     FeatureEntitlement(feature=FeatureFlag.MEAL_CUSTOMIZATION, enabled=True),
-                    # Pro exclusive features
+                    # Enterprise exclusive features
                     FeatureEntitlement(
                         feature=FeatureFlag.CREWS,
                         enabled=True,
@@ -341,7 +341,7 @@ class MonetizationConfig:
     
     def get_upgrade_path(self, current_tier: SubscriptionTier) -> List[SubscriptionTier]:
         """Get available upgrade tiers."""
-        tier_order = [SubscriptionTier.FREE, SubscriptionTier.PLUS, SubscriptionTier.PRO]
+        tier_order = [SubscriptionTier.FREE, SubscriptionTier.PREMIUM, SubscriptionTier.ENTERPRISE]
         current_index = tier_order.index(current_tier)
         return tier_order[current_index + 1:]
     

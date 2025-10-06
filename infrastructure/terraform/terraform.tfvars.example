@@ -1,0 +1,183 @@
+# Terraform Variables Configuration for AI Nutritionist
+# Copy this file to terraform.tfvars and customize for your environment
+
+# =====================================
+# REQUIRED VARIABLES
+# =====================================
+project_name = "ai-nutritionist"
+environment  = "prod"  # dev, staging, prod
+aws_region   = "us-east-1"
+
+# =====================================
+# BASIC CONFIGURATION
+# =====================================
+# Lambda Configuration
+lambda_runtime     = "python3.11"
+lambda_timeout     = 30
+lambda_memory_size = 512
+lambda_architecture = "arm64"  # arm64 for better price/performance
+
+# =====================================
+# SECURITY CONFIGURATION
+# =====================================
+# Enable comprehensive security monitoring
+enable_guardduty     = true
+enable_security_hub  = true
+enable_aws_config    = true
+enable_waf          = true
+enable_cloudfront_waf = true
+
+# Privacy and compliance
+gdpr_compliance_enabled = true
+privacy_mode           = "strict"  # strict, balanced, minimal
+enable_webhook_validation = true
+
+# =====================================
+# NETWORKING & VPC
+# =====================================
+# Deploy in VPC for enhanced security (recommended for production)
+enable_vpc = true
+vpc_cidr   = "10.0.0.0/16"
+
+# Multi-AZ deployment for high availability
+private_subnet_cidrs = ["10.0.1.0/24", "10.0.2.0/24", "10.0.3.0/24"]
+public_subnet_cidrs  = ["10.0.101.0/24", "10.0.102.0/24", "10.0.103.0/24"]
+
+# VPC Flow Logs for security monitoring
+enable_vpc_flow_logs = true
+
+# =====================================
+# PERFORMANCE OPTIMIZATION
+# =====================================
+# ElastiCache for improved performance and cost reduction
+enable_elasticache           = true
+elasticache_node_type       = "cache.t3.micro"  # Scale up for production
+elasticache_num_nodes       = 2  # Multi-node for HA
+elasticache_auth_token      = ""  # Set a strong password
+
+# Cost optimization features
+enable_cost_optimization = true
+prompt_cache_ttl        = 3600  # 1 hour
+
+# =====================================
+# MONITORING & ALERTING
+# =====================================
+enable_monitoring        = true
+enable_xray_tracing     = true
+enable_enhanced_monitoring = true
+enable_sns_alerts       = true
+
+# Alert configuration
+alert_email = "admin@yourdomain.com"
+
+# Log retention
+log_level                    = "INFO"  # DEBUG, INFO, WARNING, ERROR
+cloudwatch_log_retention_days = 30
+
+# =====================================
+# BACKUP & DISASTER RECOVERY
+# =====================================
+enable_aws_backup = true
+backup_schedule   = "cron(0 4 * * ? *)"  # Daily at 4 AM UTC
+backup_retention_days = 35
+backup_cold_storage_after = 30
+
+# Cross-region backup for production
+backup_cross_region_destination = "us-west-2"  # Uncomment and set for prod
+
+# =====================================
+# COST MANAGEMENT
+# =====================================
+enable_cost_budgets           = true
+monthly_budget_limit          = "500"  # USD
+enable_cost_anomaly_detection = true
+cost_anomaly_threshold        = 50
+
+# =====================================
+# RELIABILITY & ERROR HANDLING
+# =====================================
+enable_dlq_processing    = true
+enable_async_processing  = true
+dlq_processor_max_concurrency = 10
+
+# =====================================
+# ADVANCED FEATURES
+# =====================================
+# Family sharing and multi-user features
+enable_family_sharing = true
+
+# Point-in-time recovery for DynamoDB
+enable_point_in_time_recovery = true
+
+# API Gateway configuration
+api_gateway_throttling_enabled = true
+api_gateway_burst_limit       = 5000
+api_gateway_rate_limit        = 2000
+
+# =====================================
+# CLOUDFRONT & CDN
+# =====================================
+cloudfront_price_class    = "PriceClass_100"  # Global edge locations
+cloudfront_default_ttl    = 86400   # 24 hours
+enable_cloudfront_logging = false   # Enable for detailed analytics (additional cost)
+
+# =====================================
+# DOMAIN & SSL (OPTIONAL)
+# =====================================
+# Uncomment and configure for custom domain
+# custom_domain_name = "api.yourdomain.com"
+# ssl_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/12345678-1234-1234-1234-123456789012"
+# cloudfront_ssl_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/87654321-4321-4321-4321-210987654321"
+
+# =====================================
+# BEDROCK AI CONFIGURATION
+# =====================================
+bedrock_models = [
+  "amazon.titan-text-express-v1",
+  "anthropic.claude-3-haiku-20240307-v1:0",
+  "anthropic.claude-3-sonnet-20240229-v1:0"
+]
+
+# =====================================
+# EXTERNAL SERVICES
+# =====================================
+# Webhook validation
+twilio_webhook_validation = true
+stripe_webhook_validation = true
+
+# AWS End User Messaging (SMS)
+enable_aws_sms      = false  # Set to true if using AWS SMS instead of Twilio
+sms_phone_country   = "US"
+sms_message_type    = "TRANSACTIONAL"
+
+# =====================================
+# RESOURCE TAGS
+# =====================================
+additional_tags = {
+  Owner       = "DevOps-Team"
+  CostCenter  = "Engineering"
+  Compliance  = "GDPR"
+  Backup      = "Required"
+  Environment = "Production"  # Update based on environment
+}
+
+# =====================================
+# DEVELOPMENT SETTINGS
+# =====================================
+# For development environments, you might want to disable expensive features:
+# enable_guardduty = false
+# enable_aws_backup = false
+# enable_elasticache = false
+# monthly_budget_limit = "50"
+# elasticache_num_nodes = 1
+# cloudfront_price_class = "PriceClass_100"
+
+# =====================================
+# PRODUCTION SETTINGS
+# =====================================
+# For production environments, enable all security and monitoring features:
+# All security features enabled by default above
+# Consider enabling:
+# enable_ddos_protection = true  # AWS Shield Advanced (expensive)
+# enable_multi_region = true    # For global applications
+# backup_cross_region_destination = "us-west-2"

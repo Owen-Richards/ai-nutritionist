@@ -7,16 +7,16 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 
-from ...services.meal_planning.plan_coordinator import (
+from src.services.meal_planning.plan_coordinator import (
     FeedbackResult,
     PlanCoordinator,
     PlanFeedbackCommand,
 )
-from ...services.meal_planning.repository import GeneratedMealPlan
-from ...services.meal_planning.pipeline import MealPlanPipeline
+from src.services.meal_planning.repository import GeneratedMealPlan
+from src.services.meal_planning.pipeline import MealPlanPipeline
 
-from ..dependencies import get_plan_coordinator, get_plan_pipeline
-from ..schemas.plan import (
+from src.api.dependencies import get_plan_coordinator, get_plan_pipeline
+from src.api.schemas.plan import (
     PlanFeedbackRequest,
     PlanFeedbackResponse,
     PlanGenerateRequest,

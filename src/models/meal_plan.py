@@ -8,7 +8,7 @@ from datetime import datetime, date
 from typing import Dict, List, Optional, Any
 from enum import Enum
 
-from ..config.constants import MealType
+from src.config.constants import MealType
 
 
 @dataclass

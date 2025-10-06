@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Dict, List, Optional, Any
 from enum import Enum
 
-from ..config.constants import SubscriptionTier, DietaryRestriction, GoalType
+from src.config.constants import SubscriptionTier, DietaryRestriction, GoalType
 
 
 @dataclass
@@ -92,6 +92,9 @@ class UserPreferences:
     household_size: int = 2
     weekly_budget: float = 75.0
     dietary_restrictions: List[DietaryRestriction] = field(default_factory=list)
+    dietary_patterns: List[str] = field(default_factory=list)
+    intolerances: List[str] = field(default_factory=list)
+    preference_tags: List[str] = field(default_factory=list)
     cuisine_preferences: List[str] = field(default_factory=lambda: ["american", "italian"])
     cooking_skill: str = "beginner"  # beginner, intermediate, advanced
     max_prep_time: int = 30  # minutes
@@ -105,6 +108,9 @@ class UserPreferences:
             'household_size': self.household_size,
             'weekly_budget': self.weekly_budget,
             'dietary_restrictions': [dr.value for dr in self.dietary_restrictions],
+            'dietary_patterns': self.dietary_patterns,
+            'intolerances': self.intolerances,
+            'preference_tags': self.preference_tags,
             'cuisine_preferences': self.cuisine_preferences,
             'cooking_skill': self.cooking_skill,
             'max_prep_time': self.max_prep_time,
@@ -120,6 +126,9 @@ class UserPreferences:
             household_size=data.get('household_size', 2),
             weekly_budget=data.get('weekly_budget', 75.0),
             dietary_restrictions=[DietaryRestriction(dr) for dr in data.get('dietary_restrictions', [])],
+            dietary_patterns=data.get('dietary_patterns', []),
+            intolerances=data.get('intolerances', []),
+            preference_tags=data.get('preference_tags', []),
             cuisine_preferences=data.get('cuisine_preferences', ["american", "italian"]),
             cooking_skill=data.get('cooking_skill', "beginner"),
             max_prep_time=data.get('max_prep_time', 30),
@@ -128,6 +137,41 @@ class UserPreferences:
             favorite_ingredients=data.get('favorite_ingredients', []),
             disliked_ingredients=data.get('disliked_ingredients', []),
         )
+
+
+@dataclass
+class MedicalCaution:
+    """Clinical note that should influence recommendations."""
+
+    condition: str
+    severity: str  # e.g. low, moderate, high
+    notes: Optional[str] = None
+    clinician: Optional[str] = None
+    reviewed_at: Optional[datetime] = None
+
+
+@dataclass
+class WearableIntegration:
+    """Represents an authorised wearable or health-data connection."""
+
+    provider: str  # apple_health, garmin, strava, fitbit, etc.
+    external_user_id: str
+    access_token: Optional[str] = None
+    refresh_token: Optional[str] = None
+    expires_at: Optional[datetime] = None
+    scopes: List[str] = field(default_factory=list)
+    last_sync_at: Optional[datetime] = None
+    consent_scopes: List[str] = field(default_factory=list)
+
+
+@dataclass
+class InventoryLink:
+    """Link to a persisted inventory/pantry record."""
+
+    inventory_id: str
+    location: str  # pantry, fridge, freezer, etc.
+    last_synced_at: Optional[datetime] = None
+    auto_sync: bool = True
 
 
 @dataclass 
@@ -139,6 +183,9 @@ class UserProfile:
     goals: List[UserGoal] = field(default_factory=list)
     preferences: UserPreferences = field(default_factory=UserPreferences)
     nutrition_targets: Optional[NutritionTargets] = None
+    medical_cautions: List[MedicalCaution] = field(default_factory=list)
+    wearable_integrations: Dict[str, WearableIntegration] = field(default_factory=dict)
+    biometric_streams: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     
     # Profile completion tracking
     onboarding_completed: bool = False
@@ -159,7 +206,11 @@ class UserProfile:
     # Linked accounts (family sharing)
     linked_users: List[str] = field(default_factory=list)
     primary_account: bool = True
-    
+    household_roster: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    preferred_channels: List[str] = field(default_factory=lambda: ["sms"])
+    inventory_links: List[InventoryLink] = field(default_factory=list)
+    consent_flags: Dict[str, bool] = field(default_factory=dict)
+
     def get_primary_goal(self) -> Optional[UserGoal]:
         """Get the highest priority active goal"""
         active_goals = [g for g in self.goals if g.is_active]
@@ -186,6 +237,39 @@ class UserProfile:
     def update_subscription(self, new_tier: SubscriptionTier) -> None:
         """Update subscription tier"""
         self.subscription_tier = new_tier
+        self.last_updated = datetime.utcnow()
+
+    def register_wearable(self, integration: WearableIntegration) -> None:
+        """Attach or refresh a wearable integration."""
+        self.wearable_integrations[integration.provider] = integration
+        self.last_updated = datetime.utcnow()
+
+    def record_biometric_sample(self, stream: str, payload: Dict[str, Any]) -> None:
+        """Persist a lightweight biometric snapshot in memory."""
+        entry = self.biometric_streams.setdefault(stream, {})
+        entry.update(payload)
+        entry["updated_at"] = datetime.utcnow().isoformat()
+        self.last_updated = datetime.utcnow()
+
+    def add_medical_caution(self, caution: MedicalCaution) -> None:
+        """Store a reviewed medical caution for downstream filtering."""
+        self.medical_cautions.append(caution)
+        self.last_updated = datetime.utcnow()
+
+    def link_inventory(self, link: InventoryLink) -> None:
+        """Associate an inventory source with this profile."""
+        existing = next((item for item in self.inventory_links if item.inventory_id == link.inventory_id), None)
+        if existing:
+            existing.last_synced_at = link.last_synced_at or existing.last_synced_at
+            existing.auto_sync = link.auto_sync
+            existing.location = link.location
+        else:
+            self.inventory_links.append(link)
+        self.last_updated = datetime.utcnow()
+
+    def set_consent(self, consent: str, granted: bool) -> None:
+        """Update user consent flags for downstream processing."""
+        self.consent_flags[consent] = granted
         self.last_updated = datetime.utcnow()
     
     def calculate_nutrition_targets(self) -> NutritionTargets:
@@ -266,10 +350,46 @@ class UserProfile:
             'last_active': self.last_active.isoformat() if self.last_active else None,
             'timezone': self.timezone,
             'language': self.language,
-            'linked_users': self.linked_users,
-            'primary_account': self.primary_account,
-        }
-    
+        'linked_users': self.linked_users,
+        'primary_account': self.primary_account,
+        'medical_cautions': [
+            {
+                'condition': caution.condition,
+                'severity': caution.severity,
+                'notes': caution.notes,
+                'clinician': caution.clinician,
+                'reviewed_at': caution.reviewed_at.isoformat() if caution.reviewed_at else None,
+            }
+            for caution in self.medical_cautions
+        ],
+        'wearable_integrations': {
+            provider: {
+                'provider': integration.provider,
+                'external_user_id': integration.external_user_id,
+                'access_token': integration.access_token,
+                'refresh_token': integration.refresh_token,
+                'expires_at': integration.expires_at.isoformat() if integration.expires_at else None,
+                'scopes': list(integration.scopes),
+                'last_sync_at': integration.last_sync_at.isoformat() if integration.last_sync_at else None,
+                'consent_scopes': list(integration.consent_scopes),
+            }
+            for provider, integration in self.wearable_integrations.items()
+        },
+        'biometric_streams': self.biometric_streams,
+        'household_roster': self.household_roster,
+        'preferred_channels': self.preferred_channels,
+        'inventory_links': [
+            {
+                'inventory_id': link.inventory_id,
+                'location': link.location,
+                'last_synced_at': link.last_synced_at.isoformat() if link.last_synced_at else None,
+                'auto_sync': link.auto_sync,
+            }
+            for link in self.inventory_links
+        ],
+        'consent_flags': self.consent_flags,
+    }
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'UserProfile':
         """Create from dictionary"""
@@ -278,7 +398,44 @@ class UserProfile:
         nutrition_targets = None
         if data.get('nutrition_targets'):
             nutrition_targets = NutritionTargets.from_dict(data['nutrition_targets'])
-        
+
+        medical_cautions = [
+            MedicalCaution(
+                condition=item['condition'],
+                severity=item.get('severity', 'moderate'),
+                notes=item.get('notes'),
+                clinician=item.get('clinician'),
+                reviewed_at=datetime.fromisoformat(item['reviewed_at']) if item.get('reviewed_at') else None,
+            )
+            for item in data.get('medical_cautions', [])
+        ]
+
+        wearable_integrations = {
+            provider: WearableIntegration(
+                provider=payload.get('provider', provider),
+                external_user_id=payload['external_user_id'],
+                access_token=payload.get('access_token'),
+                refresh_token=payload.get('refresh_token'),
+                expires_at=datetime.fromisoformat(payload['expires_at']) if payload.get('expires_at') else None,
+                scopes=list(payload.get('scopes', [])),
+                last_sync_at=datetime.fromisoformat(payload['last_sync_at']) if payload.get('last_sync_at') else None,
+                consent_scopes=list(payload.get('consent_scopes', [])),
+            )
+            for provider, payload in data.get('wearable_integrations', {}).items()
+            if payload.get('external_user_id')
+        }
+
+        inventory_links = [
+            InventoryLink(
+                inventory_id=item['inventory_id'],
+                location=item.get('location', 'pantry'),
+                last_synced_at=datetime.fromisoformat(item['last_synced_at']) if item.get('last_synced_at') else None,
+                auto_sync=item.get('auto_sync', True),
+            )
+            for item in data.get('inventory_links', [])
+            if item.get('inventory_id')
+        ]
+
         return cls(
             user_id=data['user_id'],
             phone_number=data['phone_number'],
@@ -298,4 +455,11 @@ class UserProfile:
             language=data.get('language', 'en'),
             linked_users=data.get('linked_users', []),
             primary_account=data.get('primary_account', True),
+            medical_cautions=medical_cautions,
+            wearable_integrations=wearable_integrations,
+            biometric_streams=data.get('biometric_streams', {}),
+            household_roster=data.get('household_roster', {}),
+            preferred_channels=data.get('preferred_channels', ['sms']),
+            inventory_links=inventory_links,
+            consent_flags=data.get('consent_flags', {}),
         )

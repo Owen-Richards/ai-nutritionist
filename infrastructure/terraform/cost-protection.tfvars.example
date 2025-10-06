@@ -1,0 +1,84 @@
+# 💰 COST PROTECTION CONFIGURATION
+# Example configuration for budget-conscious testing
+
+# ===== BUDGET SETTINGS =====
+monthly_budget_hard_cap    = 25    # $25/month hard cap
+daily_budget_limit        = 3     # $3/day limit
+enable_emergency_shutdown = true
+enable_billing_alerts    = true
+
+# ===== CONTACT INFORMATION =====
+owner_email = "your-email@example.com"  # REPLACE WITH YOUR EMAIL
+
+# ===== TESTING MODE =====
+testing_mode = true  # Enables cost optimizations
+
+# ===== ACCESS CONTROL =====
+max_authorized_users         = 10    # You + 9 friends max
+max_daily_requests_per_user  = 50    # 50 requests/day per user
+max_monthly_requests_per_user = 1000  # 1000 requests/month per user
+
+# Phone numbers in E.164 format (starting with +)
+authorized_phone_numbers = [
+  "+1234567890",  # REPLACE WITH YOUR PHONE NUMBER
+  # "+1987654321",  # Add your friends' numbers
+  # "+1555666777",
+]
+
+# ===== SECURITY SETTINGS =====
+enable_waf_protection = true
+waf_rate_limit       = 1000  # Reduced for testing
+
+# Optional: Restrict to specific countries (null = allow all)
+# allowed_countries = ["US", "CA", "GB"]  # Uncomment and adjust as needed
+
+# ===== PERFORMANCE LIMITS (Testing Mode) =====
+lambda_concurrency_limit = 5     # Max 5 concurrent Lambda executions
+lambda_memory_size      = 256   # Reduced memory for cost savings
+lambda_timeout         = 30    # Shorter timeout
+
+# ===== MONITORING =====
+enable_detailed_monitoring = false  # Disabled for cost savings
+log_retention_days        = 7      # Keep logs for 1 week
+
+# ===== PROJECT SETTINGS =====
+project_name = "ai-nutritionist"
+environment  = "dev"
+
+additional_tags = {
+  ManagedBy   = "Terraform"
+  CostCenter  = "Personal"
+  Owner       = "Solo Developer"
+  Purpose     = "Budget-Conscious Testing"
+  MaxBudget   = "$25/month"
+}
+
+# ===== DEPLOYMENT NOTES =====
+# 
+# 🚨 IMPORTANT: Before deploying, update:
+# 1. owner_email with your actual email address
+# 2. authorized_phone_numbers with your phone number (E.164 format)
+# 3. Review budget limits and adjust if needed
+#
+# 💰 COST BREAKDOWN (Estimated):
+# - Lambda: $0.50-2.00/month (with 5 concurrent limit)
+# - DynamoDB: $1.00-3.00/month (pay-per-request)
+# - API Gateway: $0.50-1.50/month (with rate limiting)
+# - CloudWatch: $0.50-1.00/month (7-day retention)
+# - SNS: $0.10-0.30/month (alert notifications)
+# - Total: ~$2.60-7.80/month under normal testing usage
+#
+# 🛡️ PROTECTION MEASURES:
+# - Hard stop at $25/month (95% = $23.75 triggers shutdown)
+# - Daily limit of $3 (prevents runaway costs)
+# - Max 10 authorized users
+# - Rate limiting (50 requests/day per user)
+# - WAF protection against abuse
+# - Automatic email alerts at 80% budget
+#
+# 📊 MONITORING:
+# - Real-time budget tracking
+# - Usage analytics per user
+# - Cost breakdown by service
+# - Emergency shutdown system
+# - Email notifications for all thresholds

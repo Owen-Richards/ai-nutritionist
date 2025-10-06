@@ -37,7 +37,7 @@ SPAM_MESSAGES = [
 class SMSProtectionTester:
     def __init__(self):
         self.lambda_client = boto3.client('lambda')
-        self.sms_client = boto3.client('pinpoint-sms-voice-v2')
+        self.sms_client = boto3.client('pinpoint-sms-voice-v2')  # AWS End User Messaging SMS API
         self.results = []
         
     def test_spam_detection(self):

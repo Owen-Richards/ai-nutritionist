@@ -428,47 +428,47 @@ class PaywallService:
                 PaywallFeature(
                     name="Adaptive Meal Planning",
                     description="AI learns your preferences and adjusts recommendations",
-                    tier_required=SubscriptionTier.PLUS
+                    tier_required=SubscriptionTier.PREMIUM
                 ),
                 PaywallFeature(
                     name="Home Screen Widget",
                     description="Quick access to your meal plan and progress",
-                    tier_required=SubscriptionTier.PLUS
+                    tier_required=SubscriptionTier.PREMIUM
                 ),
                 PaywallFeature(
                     name="Advanced Nutrition Tracking",
                     description="Detailed macro and micronutrient analysis",
-                    tier_required=SubscriptionTier.PLUS
+                    tier_required=SubscriptionTier.PREMIUM
                 ),
                 PaywallFeature(
                     name="Unlimited SMS Nudges",
                     description="Stay motivated with personalized reminders",
-                    tier_required=SubscriptionTier.PLUS
+                    tier_required=SubscriptionTier.PREMIUM
                 )
             ])
         
-        if current_tier in [SubscriptionTier.FREE, SubscriptionTier.PLUS]:
+        if current_tier in [SubscriptionTier.FREE, SubscriptionTier.PREMIUM]:
             # Show Pro features
             features.extend([
                 PaywallFeature(
                     name="Nutrition Crews",
                     description="Join communities for motivation and support",
-                    tier_required=SubscriptionTier.PRO
+                    tier_required=SubscriptionTier.ENTERPRISE
                 ),
                 PaywallFeature(
                     name="Calendar Integration",
                     description="Sync meal prep events with Google Calendar & Outlook",
-                    tier_required=SubscriptionTier.PRO
+                    tier_required=SubscriptionTier.ENTERPRISE
                 ),
                 PaywallFeature(
                     name="Grocery Export & Partner Links",
                     description="Export shopping lists with direct store integration",
-                    tier_required=SubscriptionTier.PRO
+                    tier_required=SubscriptionTier.ENTERPRISE
                 ),
                 PaywallFeature(
                     name="Fitness Integration",
                     description="Connect with Apple Health, Fitbit, and more",
-                    tier_required=SubscriptionTier.PRO,
+                    tier_required=SubscriptionTier.ENTERPRISE,
                     is_new=True
                 )
             ])

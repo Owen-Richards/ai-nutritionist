@@ -12,6 +12,8 @@ from typing import Dict, Optional, Any
 from decimal import Decimal
 import json
 
+from src.utils.datetime_utils import utc_now
+
 logger = logging.getLogger(__name__)
 
 
@@ -58,7 +60,7 @@ class SubscriptionService:
             # Check if subscription is still valid
             if subscription.get('expires_at'):
                 expires_at = datetime.fromisoformat(subscription['expires_at'])
-                if expires_at < datetime.utcnow():
+                if expires_at < utc_now():
                     subscription['status'] = 'expired'
                     subscription['tier'] = 'free'
                     subscription['premium_features'] = False
@@ -88,7 +90,7 @@ class SubscriptionService:
             }
             
         # Check monthly usage for free tier
-        current_month = datetime.utcnow().strftime('%Y-%m')
+        current_month = utc_now().strftime('%Y-%m')
         try:
             usage_response = self.usage_table.get_item(
                 Key={
@@ -122,7 +124,7 @@ class SubscriptionService:
     
     def increment_usage(self, user_phone: str) -> bool:
         """Track meal plan generation for billing/limits"""
-        current_month = datetime.utcnow().strftime('%Y-%m')
+        current_month = utc_now().strftime('%Y-%m')
         
         try:
             self.usage_table.update_item(
@@ -286,18 +288,19 @@ class SubscriptionService:
         return f"""
 🎯 You've used all {usage_info.get('plan_limit', 3)} free meal plans this month!
 
-✨ **Upgrade to Premium ($4.99/month):**
+✨ **Upgrade to Premium ($7.99/month):**
 • Unlimited meal plans
 • Custom dietary restrictions
 • Grocery list optimization
 • Family meal planning
 • 24/7 nutrition chat
 
-🏢 **Enterprise ($9.99/month):**
+🏢 **Enterprise ($99/month):**
 • Everything in Premium
-• Calendar sync
-• Team/family accounts
+• 10 seats + API access
 • Advanced analytics
+• Team/family accounts
+• Calendar sync
 • Priority support
 
 Reply "UPGRADE" to get started! 💪

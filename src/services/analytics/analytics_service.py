@@ -9,12 +9,13 @@ import asyncio
 import hashlib
 import json
 import logging
+from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Set, Union
 from uuid import UUID
 
 try:
-    from ...models.analytics import (
+    from src.models.analytics import (
         BaseEvent,
         EventType,
         ConsentType,
@@ -33,13 +34,19 @@ try:
         PaywallViewedEvent,
         SubscribeStartedEvent,
         SubscribeActivatedEvent,
-        ChurnedEvent
+        ChurnedEvent,
+        StrategyReportScheduledEvent,
+        RecoveryPlanCreatedEvent,
+        ProgressSummaryPublishedEvent,
+        MessageIngestedEvent,
+        WearableSyncEvent,
+        InventoryStateRecordedEvent
     )
 except ImportError:
     # Fallback for direct imports when running as module
     import sys, os
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
-    from models.analytics import (
+    from src.models.analytics import (
         BaseEvent,
         EventType,
         ConsentType,
@@ -57,7 +64,13 @@ except ImportError:
         PaywallViewedEvent,
         SubscribeStartedEvent,
         SubscribeActivatedEvent,
-        ChurnedEvent
+        ChurnedEvent,
+        StrategyReportScheduledEvent,
+        RecoveryPlanCreatedEvent,
+        ProgressSummaryPublishedEvent,
+        MessageIngestedEvent,
+        WearableSyncEvent,
+        InventoryStateRecordedEvent
     )
 
 logger = logging.getLogger(__name__)
@@ -72,6 +85,8 @@ class AnalyticsService:
         self.user_profiles: Dict[UUID, UserProfile] = {}
         self.user_pii: Dict[UUID, UserPII] = {}
         self.consent_cache: Dict[UUID, Dict[ConsentType, bool]] = {}
+        self.event_history: Dict[UUID, Dict[EventType, datetime]] = defaultdict(dict)
+        self._recent_events: Dict[UUID, deque] = defaultdict(lambda: deque(maxlen=50))
         
         # Configuration
         self.batch_size = 100
@@ -80,13 +95,98 @@ class AnalyticsService:
         
         # Background tasks
         self._background_tasks: Set[asyncio.Task] = set()
+        self._tasks_started = False
+        # Try to start tasks during init, but don't fail if no event loop
         self._start_background_tasks()
     
     def _start_background_tasks(self):
         """Start background tasks for event processing."""
-        task = asyncio.create_task(self._periodic_flush())
-        self._background_tasks.add(task)
-        task.add_done_callback(self._background_tasks.discard)
+        if self._tasks_started:
+            return
+            
+        try:
+            # Only start tasks if there's a running event loop
+            loop = asyncio.get_running_loop()
+            task = asyncio.create_task(self._periodic_flush())
+            self._background_tasks.add(task)
+            task.add_done_callback(self._background_tasks.discard)
+            self._tasks_started = True
+        except RuntimeError:
+            # No event loop running, tasks will be started later
+            pass
+
+    @staticmethod
+    def _coerce_uuid(value: Union[UUID, str, None]) -> Optional[UUID]:
+        """Best-effort conversion to UUID while handling None gracefully."""
+        if value is None:
+            return None
+        if isinstance(value, UUID):
+            return value
+        try:
+            return UUID(str(value))
+        except (ValueError, TypeError):
+            return None
+
+    @staticmethod
+    def _infer_season(timestamp: datetime, hemisphere: str = "north") -> str:
+        """Infer meteorological season for enrichment."""
+        month = timestamp.month
+        if hemisphere.lower().startswith("south"):
+            offset = (month + 6) % 12 or 12
+        else:
+            offset = month
+        if offset in (12, 1, 2):
+            return "winter"
+        if offset in (3, 4, 5):
+            return "spring"
+        if offset in (6, 7, 8):
+            return "summer"
+        return "autumn"
+
+    def build_enriched_context(
+        self,
+        geo: Optional[Dict[str, str]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        timestamp: Optional[datetime] = None,
+    ) -> EventContext:
+        """Construct event context enriched with geo and seasonal metadata."""
+
+        payload: Dict[str, Any] = dict(metadata or {})
+        if geo:
+            payload.setdefault("geo_country", geo.get("country"))
+            payload.setdefault("geo_region", geo.get("region"))
+            payload.setdefault("local_timezone", geo.get("timezone"))
+            hemisphere = geo.get("hemisphere", "north")
+        else:
+            hemisphere = "north"
+
+        ts = timestamp or datetime.now(timezone.utc)
+        payload.setdefault("season", self._infer_season(ts, hemisphere=hemisphere))
+
+        return EventContext(**payload)
+
+    def get_last_event_time(self, user_id: Union[UUID, str], event_type: EventType) -> Optional[datetime]:
+        """Fetch the last seen timestamp for an event type."""
+        user_uuid = self._coerce_uuid(user_id)
+        if not user_uuid:
+            return None
+        return self.event_history.get(user_uuid, {}).get(event_type)
+
+    def get_recent_events(
+        self,
+        user_id: Union[UUID, str],
+        event_types: Optional[List[EventType]] = None,
+        limit: int = 10,
+    ) -> List[BaseEvent]:
+        """Return most recent tracked events for user (in-memory cache)."""
+
+        user_uuid = self._coerce_uuid(user_id)
+        if not user_uuid:
+            return []
+        events = list(self._recent_events.get(user_uuid, []))
+        if event_types:
+            events = [event for event in events if event.event_type in event_types]
+        return list(events)[-limit:]
     
     async def _periodic_flush(self):
         """Periodically flush events to warehouse."""
@@ -122,11 +222,14 @@ class AnalyticsService:
             
             # Store event
             self.events.append(event)
-            
+
             # Update user profile
             if event.user_id:
                 await self._update_user_profile(event)
-            
+                self.event_history[event.user_id][event.event_type] = event.timestamp
+                recent_events = self._recent_events[event.user_id]
+                recent_events.append(event)
+
             # Batch flush if needed
             if len(self.events) >= self.batch_size:
                 await self._flush_events_to_warehouse()
@@ -335,7 +438,7 @@ class AnalyticsService:
             **kwargs
         )
         return await self.track_event(event, context)
-    
+
     async def track_crew_joined(
         self,
         user_id: UUID,
@@ -352,7 +455,7 @@ class AnalyticsService:
             **kwargs
         )
         return await self.track_event(event, context)
-    
+
     async def track_reflection_submitted(
         self,
         user_id: UUID,
@@ -365,6 +468,130 @@ class AnalyticsService:
             user_id=user_id,
             reflection_id=reflection_id,
             **kwargs
+        )
+        return await self.track_event(event, context)
+
+    async def track_strategy_report_scheduled(
+        self,
+        user_id: Union[UUID, str],
+        scheduled_for: datetime,
+        channel: str,
+        cadence: str,
+        context: Optional[EventContext] = None,
+        personalization_score: Optional[float] = None,
+        inventory_sources: Optional[List[str]] = None,
+        goal_focus: Optional[str] = None,
+    ) -> bool:
+        user_uuid = self._coerce_uuid(user_id)
+        if not user_uuid:
+            return False
+        event = StrategyReportScheduledEvent(
+            user_id=user_uuid,
+            scheduled_for=scheduled_for,
+            channel=channel,
+            cadence=cadence,
+            personalization_score=personalization_score,
+            inventory_sources=inventory_sources,
+            goal_focus=goal_focus,
+        )
+        return await self.track_event(event, context)
+
+    async def track_recovery_plan_created(
+        self,
+        user_id: Union[UUID, str],
+        plan_id: str,
+        deviation_reason: Optional[str],
+        channel: str,
+        scheduled_for: datetime,
+        context: Optional[EventContext] = None,
+    ) -> bool:
+        user_uuid = self._coerce_uuid(user_id)
+        if not user_uuid:
+            return False
+        event = RecoveryPlanCreatedEvent(
+            user_id=user_uuid,
+            plan_id=plan_id,
+            deviation_reason=deviation_reason,
+            channel=channel,
+            scheduled_for=scheduled_for,
+        )
+        return await self.track_event(event, context)
+
+    async def track_progress_summary(
+        self,
+        user_id: Union[UUID, str],
+        period_start: datetime,
+        period_end: datetime,
+        channel: str,
+        highlights: Optional[List[str]] = None,
+        context: Optional[EventContext] = None,
+    ) -> bool:
+        user_uuid = self._coerce_uuid(user_id)
+        if not user_uuid:
+            return False
+        event = ProgressSummaryPublishedEvent(
+            user_id=user_uuid,
+            period_start=period_start,
+            period_end=period_end,
+            channel=channel,
+            highlights=highlights,
+        )
+        return await self.track_event(event, context)
+
+    async def track_message_ingested(
+        self,
+        user_id: Optional[Union[UUID, str]],
+        platform: str,
+        tones_detected: Optional[List[str]] = None,
+        token_count: Optional[int] = None,
+        context: Optional[EventContext] = None,
+    ) -> bool:
+        user_uuid = self._coerce_uuid(user_id)
+        event = MessageIngestedEvent(
+            user_id=user_uuid,
+            platform=platform,
+            tones_detected=tones_detected,
+            token_count=token_count,
+        )
+        return await self.track_event(event, context)
+
+    async def track_wearable_sync(
+        self,
+        user_id: Union[UUID, str],
+        provider: str,
+        metrics: Dict[str, Any],
+        synced_at: datetime,
+        context: Optional[EventContext] = None,
+    ) -> bool:
+        user_uuid = self._coerce_uuid(user_id)
+        if not user_uuid:
+            return False
+        event = WearableSyncEvent(
+            user_id=user_uuid,
+            provider=provider,
+            metrics=metrics,
+            synced_at=synced_at,
+        )
+        return await self.track_event(event, context)
+
+    async def track_inventory_state(
+        self,
+        user_id: Union[UUID, str],
+        inventory_id: str,
+        location: str,
+        freshness_index: Optional[float] = None,
+        expiring_items: Optional[int] = None,
+        context: Optional[EventContext] = None,
+    ) -> bool:
+        user_uuid = self._coerce_uuid(user_id)
+        if not user_uuid:
+            return False
+        event = InventoryStateRecordedEvent(
+            user_id=user_uuid,
+            inventory_id=inventory_id,
+            location=location,
+            freshness_index=freshness_index,
+            expiring_items=expiring_items,
         )
         return await self.track_event(event, context)
     

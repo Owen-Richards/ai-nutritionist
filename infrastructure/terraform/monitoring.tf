@@ -119,6 +119,64 @@ resource "aws_cloudwatch_dashboard" "main" {
           title   = "Bedrock AI Usage and Cost Metrics"
           period  = 300
         }
+      },
+      # Messaging Providers - Custom Metrics
+      {
+        type   = "metric"
+        x      = 0
+        y      = 18
+        width  = 24
+        height = 6
+
+        properties = {
+          metrics = [
+            ["AI-Nutritionist/Messaging", "MessageSent", "Provider", "Twilio"],
+            [".", "MessageFailed", "Provider", "Twilio"],
+            ["AI-Nutritionist/Messaging", "MessageSent", "Provider", "WhatsAppCloud"],
+            [".", "MessageFailed", "Provider", "WhatsAppCloud"]
+          ]
+          view    = "timeSeries"
+          stacked = false
+          region  = var.aws_region
+          title   = "Messaging Providers (Sent/Failed)"
+          period  = 300
+        }
+      },
+      # Messaging Cost per Provider (estimated)
+      {
+        type   = "metric"
+        x      = 0
+        y      = 24
+        width  = 24
+        height = 6
+
+        properties = {
+          metrics = [
+            [{
+              expression = "m1*0.0070"
+              label      = "Twilio Cost (est USD)"
+              id         = "e1"
+            }],
+            ["AI-Nutritionist/Messaging", "MessageSent", "Provider", "Twilio", {
+              id   = "m1"
+              stat = "Sum"
+            }],
+            [{
+              expression = "m2*0.0050"
+              label      = "WhatsApp Cloud Cost (est USD)"
+              id         = "e2"
+            }],
+            ["AI-Nutritionist/Messaging", "MessageSent", "Provider", "WhatsAppCloud", {
+              id   = "m2"
+              stat = "Sum"
+            }]
+          ]
+          view    = "timeSeries"
+          stacked = false
+          region  = var.aws_region
+          title   = "Messaging Cost by Provider"
+          period  = 300
+        }
       }
     ]
   })
@@ -269,44 +327,33 @@ resource "aws_sns_topic_subscription" "email_alerts" {
   endpoint  = var.alert_email
 }
 
-# Cost Budget for AWS Services
-resource "aws_budgets_budget" "monthly_cost" {
+# Cost Budget using CloudWatch Alarms (simpler than AWS Budgets)
+resource "aws_cloudwatch_metric_alarm" "monthly_cost_budget" {
   count = var.enable_cost_budgets ? 1 : 0
   
-  name         = "${var.project_name}-monthly-budget-${var.environment}"
-  budget_type  = "COST"
-  limit_amount = var.monthly_budget_limit
-  limit_unit   = "USD"
-  time_unit    = "MONTHLY"
-  time_period_start = "2025-09-01_00:00"
+  alarm_name          = "${var.project_name}-monthly-budget-${var.environment}"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "EstimatedCharges"
+  namespace           = "AWS/Billing"
+  period              = "86400"  # 24 hours
+  statistic           = "Maximum"
+  threshold           = var.monthly_budget_limit
+  alarm_description   = "Monthly budget threshold exceeded"
+  alarm_actions       = var.enable_sns_alerts ? [aws_sns_topic.alerts[0].arn] : []
+  treat_missing_data  = "notBreaching"
 
-  cost_filter {
-    name   = "Service"
-    values = [
-      "Amazon DynamoDB",
-      "AWS Lambda",
-      "Amazon API Gateway", 
-      "Amazon CloudFront",
-      "Amazon S3",
-      "Amazon Bedrock"
-    ]
+  dimensions = {
+    Currency = "USD"
   }
 
-  notification {
-    comparison_operator        = "GREATER_THAN"
-    threshold                 = 80
-    threshold_type            = "PERCENTAGE"
-    notification_type         = "ACTUAL"
-    subscriber_email_addresses = var.enable_sns_alerts && var.alert_email != "" ? [var.alert_email] : []
-  }
-
-  notification {
-    comparison_operator        = "GREATER_THAN"
-    threshold                 = 100
-    threshold_type            = "PERCENTAGE"
-    notification_type          = "FORECASTED"
-    subscriber_email_addresses = var.enable_sns_alerts && var.alert_email != "" ? [var.alert_email] : []
-  }
+  tags = merge(
+    {
+      Name    = "${var.project_name}-monthly-budget-${var.environment}"
+      Purpose = "Monthly cost monitoring"
+    },
+    var.additional_tags
+  )
 }
 
 # CloudWatch Insights Saved Queries for Troubleshooting
@@ -343,56 +390,22 @@ resource "aws_cloudwatch_query_definition" "slow_requests" {
   EOT
 }
 
-# Cost Anomaly Detection
-resource "aws_ce_anomaly_detector" "service_monitor" {
+# Cost Anomaly Detection using CloudWatch Composite Alarms (simpler approach)
+resource "aws_cloudwatch_composite_alarm" "cost_anomaly_detector" {
   count = var.enable_cost_anomaly_detection ? 1 : 0
   
-  name     = "${var.project_name}-cost-anomaly-${var.environment}"
-  type     = "DIMENSIONAL"
+  alarm_name        = "${var.project_name}-cost-anomaly-${var.environment}"
+  alarm_description = "Detects unusual spending patterns"
   
-  specification = jsonencode({
-    Dimension = "SERVICE"
-    DimensionKey = "Bedrock"
-    MatchOptions = ["EQUALS"]
-  })
+  alarm_rule = "ALARM(${aws_cloudwatch_metric_alarm.monthly_cost_budget[0].alarm_name})"
+  
+  actions_enabled = true
+  alarm_actions   = var.enable_sns_alerts ? [aws_sns_topic.alerts[0].arn] : []
 
   tags = merge(
     {
-      Name = "${var.project_name}-cost-anomaly-${var.environment}"
-    },
-    var.additional_tags
-  )
-}
-
-# Cost Anomaly Subscription
-resource "aws_ce_anomaly_subscription" "email_notification" {
-  count = var.enable_cost_anomaly_detection && var.alert_email != "" ? 1 : 0
-  
-  name      = "${var.project_name}-cost-anomaly-subscription-${var.environment}"
-  frequency = "DAILY"
-  
-  monitor_arn_list = [
-    aws_ce_anomaly_detector.service_monitor[0].arn
-  ]
-  
-  subscriber {
-    type    = "EMAIL"
-    address = var.alert_email
-  }
-
-  threshold_expression {
-    and {
-      dimension {
-        key           = "ANOMALY_TOTAL_IMPACT_ABSOLUTE"
-        values        = [tostring(var.cost_anomaly_threshold)]
-        match_options = ["GREATER_THAN_OR_EQUAL"]
-      }
-    }
-  }
-
-  tags = merge(
-    {
-      Name = "${var.project_name}-cost-anomaly-subscription-${var.environment}"
+      Name    = "${var.project_name}-cost-anomaly-${var.environment}"
+      Purpose = "Cost anomaly detection"
     },
     var.additional_tags
   )

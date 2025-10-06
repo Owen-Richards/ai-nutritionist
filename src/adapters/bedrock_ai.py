@@ -1,5 +1,5 @@
 """
-AWS Bedrock adapter for AI services.
+AWS Bedrock adapter for AI services with distributed rate limiting.
 """
 
 import json
@@ -9,6 +9,7 @@ from botocore.exceptions import ClientError
 
 from ..core.interfaces import AIServiceInterface
 from ..models.meal_plan import MealPlan
+from ..services.infrastructure.distributed_rate_limiting import check_rate_limit, track_service_cost
 
 
 class BedrockAIService(AIServiceInterface):
@@ -18,18 +19,56 @@ class BedrockAIService(AIServiceInterface):
         self.bedrock = boto3.client('bedrock-runtime', region_name=region)
         self.model_id = model_id
     
-    async def generate_meal_plan(self, user_preferences: Dict[str, Any]) -> MealPlan:
-        """Generate meal plan using AWS Bedrock."""
+    async def generate_meal_plan(self, user_preferences: Dict[str, Any]) -> Dict[str, Any]:
+        """Generate meal plan using AWS Bedrock with rate limiting."""
+        user_id = user_preferences.get('user_id', 'anonymous')
+        
+        # Check AI request rate limits
+        rate_allowed, rate_info = await check_rate_limit(user_id, 'ai_requests')
+        
+        if not rate_allowed:
+            return {
+                'success': False,
+                'error': 'AI request rate limit exceeded',
+                'rate_info': rate_info,
+                'meal_plan': self._get_fallback_meal_plan()
+            }
+        
         prompt = self._build_meal_plan_prompt(user_preferences)
         
         try:
             response = await self._call_bedrock(prompt)
+            
+            # Track AI service costs
+            estimated_cost = 0.008  # Bedrock cost per request
+            cost_info = await track_service_cost('bedrock', estimated_cost, user_id)
+            
+            if cost_info.get('over_limit'):
+                return {
+                    'success': False,
+                    'error': 'AI service cost limit exceeded',
+                    'cost_info': cost_info,
+                    'meal_plan': self._get_fallback_meal_plan()
+                }
+            
             meal_plan_data = self._parse_meal_plan_response(response)
-            return MealPlan.from_dict(meal_plan_data)
+            
+            return {
+                'success': True,
+                'meal_plan': MealPlan.from_dict(meal_plan_data),
+                'rate_info': rate_info,
+                'cost_info': cost_info
+            }
+            
         except Exception as e:
             print(f"Error generating meal plan: {e}")
             # Return a fallback meal plan
-            return self._get_fallback_meal_plan()
+            return {
+                'success': False,
+                'error': str(e),
+                'meal_plan': self._get_fallback_meal_plan(),
+                'rate_info': rate_info
+            }
     
     async def analyze_food_image(self, image_url: str) -> Dict[str, Any]:
         """Analyze food image using AWS Bedrock multimodal capabilities."""

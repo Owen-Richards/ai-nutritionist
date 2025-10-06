@@ -1,4 +1,4 @@
-AWSTemplateFormatVersion: '2010-09-09'
+AWSTemplateFormatVersion: "2010-09-09"
 Transform: AWS::Serverless-2016-10-31
 Description: AI Nutritionist Assistant - Serverless WhatsApp/SMS meal planning bot
 
@@ -6,7 +6,7 @@ Globals:
   Function:
     Timeout: 30
     MemorySize: 256
-    Runtime: python3.11
+    Runtime: python3.10
     Environment:
       Variables:
         DYNAMODB_TABLE: !Ref UserDataTable
@@ -168,6 +168,29 @@ Resources:
         - Key: Environment
           Value: !Ref Environment
 
+  # Distributed Rate Limiting Table
+  RateLimitTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub ai-nutritionist-rate-limits-${Environment}
+      AttributeDefinitions:
+        - AttributeName: rate_key
+          AttributeType: S
+      KeySchema:
+        - AttributeName: rate_key
+          KeyType: HASH
+      BillingMode: PAY_PER_REQUEST
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
+      Tags:
+        - Key: Project
+          Value: AI-Nutritionist
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: distributed-rate-limiting
+
   # Cost Tracking Table
   CostTable:
     Type: AWS::DynamoDB::Table
@@ -295,7 +318,7 @@ Resources:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub ai-nutritionist-universal-handler-${Environment}
-      CodeUri: src/handlers/
+      CodeUri: ../src/handlers/
       Handler: universal_message_handler.lambda_handler
       Events:
         # WhatsApp webhook
@@ -305,7 +328,7 @@ Resources:
             RestApiId: !Ref ApiGateway
             Path: /webhook/whatsapp
             Method: post
-        # SMS webhook  
+        # SMS webhook
         SMSWebhook:
           Type: Api
           Properties:
@@ -374,29 +397,29 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: !Ref UserTokensTable
         - Statement:
-          - Effect: Allow
-            Action:
-              - bedrock:InvokeModel
-              - bedrock:InvokeModelWithResponseStream
-            Resource: 
-              - !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-text-express-v1"
-              - !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0"
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+                - bedrock:InvokeModelWithResponseStream
+              Resource:
+                - !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-text-express-v1"
+                - !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0"
         - Statement:
-          - Effect: Allow
-            Action:
-              - ssm:GetParameter
-              - ssm:GetParameters
-              - secretsmanager:GetSecretValue
-            Resource: 
-              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/ai-nutritionist/*"
-              - !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:ai-nutritionist/*"
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+                - ssm:GetParameters
+                - secretsmanager:GetSecretValue
+              Resource:
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/ai-nutritionist/*"
+                - !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:ai-nutritionist/*"
 
   # Lambda function for Stripe billing webhooks
   BillingWebhookFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub ai-nutritionist-billing-webhook-${Environment}
-      CodeUri: src/handlers/
+      CodeUri: ../src/handlers/
       Handler: billing_handler.lambda_handler
       Events:
         StripeWebhook:
@@ -409,25 +432,25 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: !Ref SubscriptionsTable
         - Statement:
-          - Effect: Allow
-            Action:
-              - ssm:GetParameter
-              - ssm:GetParameters
-            Resource: 
-              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/ai-nutritionist/*"
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+                - ssm:GetParameters
+              Resource:
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/ai-nutritionist/*"
 
   # Lambda function for scheduled meal plan generation
   SchedulerFunction:
     Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub ai-nutritionist-scheduler-${Environment}
-      CodeUri: src/handlers/
+      CodeUri: ../src/handlers/
       Handler: scheduler_handler.lambda_handler
       Events:
         WeeklySchedule:
           Type: Schedule
           Properties:
-            Schedule: cron(0 8 ? * MON *)  # Every Monday at 8 AM UTC
+            Schedule: cron(0 8 ? * MON *) # Every Monday at 8 AM UTC
             Description: Generate weekly meal plans
       Policies:
         - DynamoDBCrudPolicy:
@@ -435,36 +458,82 @@ Resources:
         - DynamoDBCrudPolicy:
             TableName: !Ref PromptCacheTable
         - Statement:
-          - Effect: Allow
-            Action:
-              - bedrock:InvokeModel
-            Resource: 
-              - !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-text-express-v1"
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource:
+                - !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/amazon.titan-text-express-v1"
         - Statement:
-          - Effect: Allow
-            Action:
-              - ssm:GetParameter
-              - ssm:GetParameters
-              - secretsmanager:GetSecretValue
-            Resource: 
-              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/ai-nutritionist/*"
-              - !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:ai-nutritionist/*"
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+                - ssm:GetParameters
+                - secretsmanager:GetSecretValue
+              Resource:
+                - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/ai-nutritionist/*"
+                - !Sub "arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:ai-nutritionist/*"
 
-  # S3 Bucket for static web content and meal plan PDFs
+  # S3 Bucket for static web content and meal plan PDFs - SECURE CONFIGURATION
   WebContentBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketName: !Sub ai-nutritionist-web-${Environment}-${AWS::AccountId}
       PublicAccessBlockConfiguration:
-        BlockPublicAcls: false
-        BlockPublicPolicy: false
-        IgnorePublicAcls: false
-        RestrictPublicBuckets: false
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
       WebsiteConfiguration:
         IndexDocument: index.html
         ErrorDocument: error.html
+      # Add encryption by default
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      # Add lifecycle policy for cost optimization
+      LifecycleConfiguration:
+        Rules:
+          - Id: TransitionToIA
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 30
+                StorageClass: STANDARD_IA
+          - Id: TransitionToGlacier
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 90
+                StorageClass: GLACIER
 
-  # CloudFront Distribution for web content
+  # Origin Access Control for CloudFront (newer approach)
+  OriginAccessControl:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${Environment}-oac"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+        Description: !Sub "Access control for ${Environment} web content"
+
+  # Bucket Policy for CloudFront access only
+  WebContentBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref WebContentBucket
+      PolicyDocument:
+        Statement:
+          - Sid: AllowCloudFrontAccess
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: "s3:GetObject"
+            Resource: !Sub "arn:aws:s3:::${WebContentBucket}/*"
+            Condition:
+              StringEquals:
+                "AWS:SourceArn": !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}"
+
+  # CloudFront Distribution for web content - SECURE CONFIGURATION
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
     Properties:
@@ -472,20 +541,18 @@ Resources:
         Origins:
           - DomainName: !GetAtt WebContentBucket.RegionalDomainName
             Id: S3Origin
+            OriginAccessControlId: !Ref OriginAccessControl
             S3OriginConfig:
               OriginAccessIdentity: ''
         Enabled: true
         DefaultRootObject: index.html
+        # Add caching for cost optimization
+        PriceClass: PriceClass_100 # Use only North America and Europe edge locations
         DefaultCacheBehavior:
           TargetOriginId: S3Origin
           ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # Managed-CachingOptimized
           Compress: true
-          ForwardedValues:
-            QueryString: false
-            Cookies:
-              Forward: none
-
-
 
   # DynamoDB table for prompt caching and cost optimization
   PromptCacheTable:

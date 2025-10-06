@@ -23,6 +23,10 @@ class PlanPreferencesInput(BaseModel):
     pantry_items: List[str] = Field(default_factory=list)
     calorie_target: Optional[int] = Field(None, ge=1200)
     grocery_cadence: Optional[str] = None
+    dietary_patterns: List[str] = Field(default_factory=list, description="Additional diet patterns to enforce (e.g. paleo, low_fodmap)")
+    intolerances: List[str] = Field(default_factory=list, description="Intolerances like lactose, fructose")
+    preference_tags: List[str] = Field(default_factory=list, description="Desired meal tags such as high_protein, kid_friendly")
+    required_ingredients: List[str] = Field(default_factory=list, description="Ingredients that should appear across the plan")
 
     def to_domain(self) -> PlanPreferences:
         return PlanPreferences(
@@ -36,6 +40,10 @@ class PlanPreferencesInput(BaseModel):
             pantry_items=list(self.pantry_items),
             calorie_target=self.calorie_target,
             grocery_cadence=self.grocery_cadence,
+            dietary_patterns=[pattern.lower() for pattern in self.dietary_patterns],
+            intolerances=[item.lower() for item in self.intolerances],
+            preference_tags=[tag.lower() for tag in self.preference_tags],
+            required_ingredients=[ingredient.lower() for ingredient in self.required_ingredients],
         )
 
     def has_overrides(self) -> bool:

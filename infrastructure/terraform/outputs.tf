@@ -139,31 +139,7 @@ output "sns_topic_arn" {
   value       = var.enable_sns_alerts ? aws_sns_topic.alerts[0].arn : null
 }
 
-# AWS End User Messaging SMS Outputs
-output "sms_phone_number" {
-  description = "AWS SMS phone number for the AI nutritionist"
-  value       = var.enable_aws_sms ? aws_pinpoint_sms_voice_v2_phone_number.ai_nutritionist_number[0].phone_number : null
-}
-
-output "sms_pool_id" {
-  description = "AWS SMS phone pool ID"
-  value       = var.enable_aws_sms ? aws_pinpoint_sms_voice_v2_phone_pool.ai_nutritionist_pool[0].pool_id : null
-}
-
-output "sms_configuration_set" {
-  description = "AWS SMS configuration set name"
-  value       = var.enable_aws_sms ? aws_pinpoint_sms_voice_v2_configuration_set.ai_nutritionist_config[0].name : null
-}
-
-output "inbound_sms_queue_url" {
-  description = "SQS queue URL for inbound SMS messages"
-  value       = var.enable_aws_sms ? aws_sqs_queue.inbound_sms[0].url : null
-}
-
-output "inbound_sms_processor_function" {
-  description = "Lambda function ARN for processing inbound SMS"
-  value       = var.enable_aws_sms ? aws_lambda_function.inbound_sms_processor[0].arn : null
-}
+## Amazon Pinpoint/AWS SMS outputs removed as Amazon Pinpoint service deprecated in this project
 
 # Security Outputs
 output "waf_web_acl_arn" {
@@ -238,12 +214,165 @@ output "deployment_timestamp" {
 output "resource_summary" {
   description = "Summary of deployed resources for cost estimation"
   value = {
-    lambda_functions    = 3
-    dynamodb_tables    = var.enable_family_sharing && var.gdpr_compliance_enabled ? 6 : (var.enable_family_sharing || var.gdpr_compliance_enabled ? 5 : 4)
-    api_gateway_apis   = 1
+    lambda_functions         = var.enable_dlq_processing ? 4 : 3
+    dynamodb_tables         = var.enable_family_sharing && var.gdpr_compliance_enabled ? 6 : (var.enable_family_sharing || var.gdpr_compliance_enabled ? 5 : 4)
+    api_gateway_apis        = 1
     cloudfront_distributions = 1
-    s3_buckets         = var.enable_cloudfront_logging ? 2 : 1
-    kms_keys          = 5
-    cloudwatch_alarms = length(aws_cloudwatch_metric_alarm.lambda_errors) + length(aws_cloudwatch_metric_alarm.lambda_duration) + length(aws_cloudwatch_metric_alarm.dynamodb_throttles) + 1
+    s3_buckets             = var.enable_cloudfront_logging ? 2 : 1
+    kms_keys               = var.enable_elasticache ? 6 : 5
+    cloudwatch_alarms      = length(aws_cloudwatch_metric_alarm.lambda_errors) + length(aws_cloudwatch_metric_alarm.lambda_duration) + length(aws_cloudwatch_metric_alarm.dynamodb_throttles) + 1
+    vpc_enabled            = var.enable_vpc
+    elasticache_clusters   = var.enable_elasticache ? var.elasticache_num_nodes : 0
+    nat_gateways          = var.enable_vpc ? length(var.public_subnet_cidrs) : 0
+    backup_vaults         = var.enable_aws_backup ? 1 : 0
+    guardduty_detectors   = var.enable_guardduty ? 1 : 0
+    config_recorders      = var.enable_aws_config ? 1 : 0
+    sqs_queues           = var.enable_dlq_processing ? 3 : 1
+  }
+}
+
+# VPC Outputs
+output "vpc_id" {
+  description = "VPC ID"
+  value       = var.enable_vpc ? aws_vpc.main[0].id : null
+}
+
+output "private_subnet_ids" {
+  description = "Private subnet IDs"
+  value       = var.enable_vpc ? aws_subnet.private[*].id : null
+}
+
+output "public_subnet_ids" {
+  description = "Public subnet IDs"
+  value       = var.enable_vpc ? aws_subnet.public[*].id : null
+}
+
+output "nat_gateway_ids" {
+  description = "NAT Gateway IDs"
+  value       = var.enable_vpc ? aws_nat_gateway.main[*].id : null
+}
+
+# ElastiCache Outputs
+output "elasticache_endpoint" {
+  description = "ElastiCache Redis endpoint"
+  value       = var.enable_elasticache ? aws_elasticache_replication_group.redis[0].configuration_endpoint_address : null
+}
+
+output "elasticache_port" {
+  description = "ElastiCache Redis port"
+  value       = var.enable_elasticache ? aws_elasticache_replication_group.redis[0].port : null
+}
+
+# Security Outputs
+output "guardduty_detector_id" {
+  description = "GuardDuty detector ID"
+  value       = var.enable_guardduty ? aws_guardduty_detector.main[0].id : null
+}
+
+output "config_recorder_name" {
+  description = "AWS Config recorder name"
+  value       = var.enable_aws_config ? aws_config_configuration_recorder.main[0].name : null
+}
+
+# Backup Outputs
+output "backup_vault_name" {
+  description = "AWS Backup vault name"
+  value       = var.enable_aws_backup ? aws_backup_vault.main[0].name : null
+}
+
+output "backup_plan_id" {
+  description = "AWS Backup plan ID"
+  value       = var.enable_aws_backup ? aws_backup_plan.main[0].id : null
+}
+
+# SQS Outputs
+output "lambda_dlq_url" {
+  description = "Lambda Dead Letter Queue URL"
+  value       = aws_sqs_queue.lambda_dlq.url
+}
+
+output "failed_message_processor_queue_url" {
+  description = "Failed message processor queue URL"
+  value       = aws_sqs_queue.failed_message_processor.url
+}
+
+output "async_processing_queue_url" {
+  description = "Async processing queue URL"
+  value       = var.enable_async_processing ? aws_sqs_queue.async_processing[0].url : null
+}
+
+# Enhanced Security Information
+output "security_features_enabled" {
+  description = "Summary of enabled security features"
+  value = {
+    guardduty     = var.enable_guardduty
+    security_hub  = var.enable_security_hub
+    aws_config    = var.enable_aws_config
+    vpc_flow_logs = var.enable_vpc && var.enable_vpc_flow_logs
+    waf_enabled   = var.enable_waf
+    encryption    = "All data encrypted at rest and in transit"
+  }
+}
+
+# Performance Optimization Information
+output "performance_features" {
+  description = "Summary of performance optimization features"
+  value = {
+    elasticache_enabled     = var.enable_elasticache
+    lambda_architecture     = var.lambda_architecture
+    prompt_caching_enabled  = var.enable_cost_optimization
+    cloudfront_enabled      = true
+    xray_tracing_enabled    = var.enable_xray_tracing
+    global_deployment_ready = var.enable_global_tables
+    translation_enabled     = var.enable_translation
+    cultural_support_enabled = var.enable_cultural_support
+  }
+}
+
+# ===== GLOBAL SERVICES OUTPUTS =====
+
+output "global_deployment_configuration" {
+  description = "Global deployment configuration summary"
+  value = {
+    global_tables_enabled   = var.enable_global_tables
+    translation_enabled     = var.enable_translation
+    polly_enabled          = var.enable_polly
+    comprehend_enabled     = var.enable_comprehend
+    cultural_support_enabled = var.enable_cultural_support
+    global_monitoring_enabled = var.enable_global_monitoring
+    supported_regions      = var.enable_global_tables ? var.global_table_regions : []
+    supported_languages    = var.enable_translation ? var.supported_languages : []
+    compliance_regions     = var.enable_regional_encryption ? var.compliance_regions : []
+  }
+}
+
+output "internationalization_features" {
+  description = "Available internationalization features"
+  value = {
+    supported_timezones    = var.supported_timezones
+    supported_currencies   = keys(var.supported_currencies)
+    measurement_systems    = keys(var.measurement_systems)
+    cultural_configurations = var.enable_cultural_support ? keys(var.cultural_configs) : []
+    polly_voices          = var.enable_polly ? var.polly_voices : {}
+  }
+}
+
+output "global_infrastructure_endpoints" {
+  description = "Global infrastructure endpoints"
+  value = {
+    global_cloudfront_domain = var.enable_global_cloudfront ? aws_cloudfront_distribution.global_api[0].domain_name : null
+    translation_input_bucket = var.enable_translation ? aws_s3_bucket.translation_input[0].bucket : null
+    translation_output_bucket = var.enable_translation ? aws_s3_bucket.translation_output[0].bucket : null
+    global_table_name        = var.enable_global_tables ? aws_dynamodb_table.user_profiles_global[0].name : null
+  }
+}
+
+output "compliance_and_privacy" {
+  description = "Compliance and privacy configuration"
+  value = {
+    gdpr_regions_covered     = var.gdpr_regions
+    regional_encryption_enabled = var.enable_regional_encryption
+    data_residency_supported = var.enable_regional_encryption
+    cultural_dietary_support = var.enable_cultural_support
   }
 }

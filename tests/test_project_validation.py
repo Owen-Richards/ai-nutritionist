@@ -45,15 +45,15 @@ def test_sample_data_files():
     """Test that sample data files are properly formatted"""
     project_root = Path(__file__).parent.parent
     
-    # Test Twilio webhook sample (moved to fixtures)
-    webhook_file = project_root / "tests" / "fixtures" / "data" / "sample-twilio-webhook.json"
+    # Test AWS End User Messaging webhook sample (moved to fixtures)
+    webhook_file = project_root / "tests" / "fixtures" / "data" / "sample-aws-end-user-messaging-webhook.json"
     assert webhook_file.exists()
-    
+
     webhook_data = json.loads(webhook_file.read_text())
-    assert "From" in webhook_data
-    assert "Body" in webhook_data
-    assert "MessageSid" in webhook_data
-    
+    assert "originationNumber" in webhook_data
+    assert "messageBody" in webhook_data
+    assert webhook_data.get("channelType") in {"SMS", "WHATSAPP"}
+
     # Test recipe sample (moved to fixtures)
     recipe_file = project_root / "tests" / "fixtures" / "data" / "sample-recipes.json"
     assert recipe_file.exists()

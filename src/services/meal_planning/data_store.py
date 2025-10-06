@@ -34,6 +34,10 @@ class UserPreferenceRecord:
     pantry_items: List[str] = field(default_factory=list)
     calorie_target: Optional[int] = None
     grocery_cadence: Optional[str] = None
+    dietary_patterns: List[str] = field(default_factory=list)
+    intolerances: List[str] = field(default_factory=list)
+    preference_tags: List[str] = field(default_factory=list)
+    required_ingredients: List[str] = field(default_factory=list)
 
     def to_preferences(self) -> PlanPreferences:
         return PlanPreferences(
@@ -47,6 +51,10 @@ class UserPreferenceRecord:
             pantry_items=list(self.pantry_items),
             calorie_target=self.calorie_target,
             grocery_cadence=self.grocery_cadence,
+            dietary_patterns=[pattern.lower() for pattern in self.dietary_patterns],
+            intolerances=[item.lower() for item in self.intolerances],
+            preference_tags=[tag.lower() for tag in self.preference_tags],
+            required_ingredients=[ingredient.lower() for ingredient in self.required_ingredients],
         )
 
 

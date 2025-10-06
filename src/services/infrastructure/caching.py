@@ -20,13 +20,22 @@ class AdvancedCachingService:
     """Multi-layer caching with intelligent cache management"""
     
     def __init__(self):
-        self.dynamodb = boto3.resource('dynamodb')
-        self.cloudwatch = boto3.client('cloudwatch')
-        
-        # Cache tables with different TTL strategies
-        self.cache_table = self.dynamodb.Table('ai-nutritionist-cache')
-        self.user_cache_table = self.dynamodb.Table('ai-nutritionist-user-cache')
-        self.ml_cache_table = self.dynamodb.Table('ai-nutritionist-ml-cache')
+        # Initialize AWS clients with error handling for testing
+        try:
+            self.dynamodb = boto3.resource('dynamodb')
+            self.cloudwatch = boto3.client('cloudwatch')
+            
+            # Cache tables with different TTL strategies
+            self.cache_table = self.dynamodb.Table('ai-nutritionist-cache')
+            self.user_cache_table = self.dynamodb.Table('ai-nutritionist-user-cache')
+            self.ml_cache_table = self.dynamodb.Table('ai-nutritionist-ml-cache')
+        except Exception as e:
+            logger.warning(f"Failed to initialize AWS services: {e}")
+            self.dynamodb = None
+            self.cloudwatch = None
+            self.cache_table = None
+            self.user_cache_table = None
+            self.ml_cache_table = None
         
         # In-memory cache for frequently accessed data
         self.memory_cache = {}

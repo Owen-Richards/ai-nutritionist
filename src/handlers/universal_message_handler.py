@@ -5,6 +5,7 @@ Makes the AI feel like "just another contact" in your phone
 WITH COMPREHENSIVE NUTRITION TRACKING AND BATTLE-TESTED UX
 """
 
+import asyncio
 import json
 import logging
 import os
@@ -20,6 +21,9 @@ import boto3
 from botocore.exceptions import ClientError
 
 # Import our domain-organized services with correct class names
+# Analytics & cadence
+from services.analytics.analytics_service import AnalyticsService
+
 from services.nutrition.insights import NutritionInsights
 from services.nutrition.tracker import NutritionTracker
 from services.personalization.preferences import UserPreferencesService
@@ -29,14 +33,16 @@ from services.messaging.sms import SMSCommunicationService
 from services.messaging.templates import MessageTemplatesService
 from services.messaging.notifications import NotificationManagementService
 from services.business.subscription import SubscriptionService
+from services.infrastructure.agent import ReasoningAgent
+from services.infrastructure.aws_optimization import get_aws_service, cached_aws_call
 
 # Configure logging
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
 
-# Initialize AWS clients
-dynamodb = boto3.resource('dynamodb')
-ssm = boto3.client('ssm')
+# Initialize AWS clients using optimized connection pool
+dynamodb = get_aws_service('dynamodb')
+ssm = get_aws_service('ssm')
 
 # Initialize domain services using correct class names
 user_preferences_service = UserPreferencesService(dynamodb)
@@ -47,7 +53,9 @@ meal_planning_service = MealPlanningService(dynamodb, nutrition_insights_service
 sms_communication_service = SMSCommunicationService()
 message_templates_service = MessageTemplatesService()
 notification_management_service = NotificationManagementService()
+analytics_service = AnalyticsService()
 subscription_service = SubscriptionService()
+reasoning_agent = ReasoningAgent()
 
 # Compatibility aliases for existing code
 user_service = user_preferences_service
@@ -57,45 +65,59 @@ consolidated_ai_service = nutrition_insights_service
 meal_plan_service = meal_planning_service
 multi_user_handler = notification_management_service
 
+# Import async wrapper
+from .async_lambda_wrapper import async_lambda_handler, utils
 
-def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
+
+@async_lambda_handler
+async def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
     """
-    Universal Lambda handler for processing messages from any platform
+    Async Universal Lambda handler for processing messages from any platform
     """
     try:
         logger.info(f"Received event: {json.dumps(event)}")
         
-        # Detect platform from event structure
+        # Detect platform from event structure (make async if needed)
         platform = messaging_service.detect_platform(event)
         if not platform:
-            return create_error_response("Invalid platform")
+            return utils.create_response(400, {'error': 'Invalid platform'})
         
         # Validate webhook signature for security
-        if platform in ['whatsapp', 'sms']:
-            signature = event.get('headers', {}).get('X-Twilio-Signature')
-            if not messaging_service.verify_twilio_signature(signature, event.get('body', ''), reconstruct_url(event)):
-                return create_error_response("Invalid signature", 403)
-        
+        if not messaging_service.verify_event_signature(event, platform):
+            return utils.create_response(403, {'error': 'Invalid signature'})
+
         # Extract message data
         message_data = messaging_service.extract_message_data(event, platform)
         if not message_data:
-            return create_error_response("Invalid webhook format")
+            return utils.create_response(400, {'error': 'Invalid webhook format'})
+
+        try:
+            await analytics_service.track_message_ingested(
+                user_id=message_data.get('user_id'),
+                platform=platform,
+                token_count=len((message_data.get('message') or '').split()),
+                context=analytics_service.build_enriched_context(
+                    metadata={'platform': platform}
+                ),
+            )
+        except Exception as exc:  # defensive logging only
+            logger.debug(f"Failed to log ingestion analytics: {exc}")
+
+        # Process the message and generate response (convert to async)
+        response_message = await process_universal_message_async(message_data, platform)
         
-        # Process the message and generate response
-        response_message = process_universal_message(message_data, platform)
-        
-        # Send response back to user
-        success = send_response(message_data, response_message, platform)
+        # Send response back to user (convert to async)
+        success = await send_response_async(message_data, response_message, platform)
         
         # Return appropriate response for platform
-        return create_platform_response(platform, success)
+        return utils.create_response(200, {'success': success, 'platform': platform})
         
     except Exception as e:
         logger.error(f"Error processing webhook: {e}")
-        return create_error_response("Internal server error", 500)
+        return utils.create_response(500, {'error': 'Internal server error'})
 
 
-def process_universal_message(message_data: Dict[str, Any], platform: str) -> str:
+async def process_universal_message_async(message_data: Dict[str, Any], platform: str) -> str:
     """
     Process message from any platform with nutrition tracking integration
     """
@@ -129,6 +151,18 @@ def process_universal_message(message_data: Dict[str, Any], platform: str) -> st
         if subscription_status['over_limit']:
             return create_upgrade_message(subscription_status, platform)
         
+        # Reason about the best next step using Bedrock agent
+        agent_context = {
+            'platform': platform,
+            'primary_goal': user_profile.get('primary_goal'),
+            'preferences': user_profile.get('preferences', {}),
+        }
+        decision = await asyncio.to_thread(reasoning_agent.decide, user_message, agent_context)
+        agent_response = execute_agent_decision(decision, user_message, user_profile, platform)
+        if agent_response:
+            subscription_service.track_usage(user_id, 'message_processed')
+            return agent_response
+
         # Process with seamless learning and adaptive conversation
         user_profile_obj = consolidated_ai_service.get_user_context(user_id) if hasattr(consolidated_ai_service, 'get_user_context') else user_profile
         response = handle_adaptive_conversation(user_message, user_profile, platform, None)
@@ -144,6 +178,52 @@ def process_universal_message(message_data: Dict[str, Any], platform: str) -> st
         return "Sorry, I'm having a bit of trouble right now. Mind trying that again? 😅"
 
 
+
+def execute_agent_decision(decision: Dict[str, Any], user_message: str, user_profile: Dict[str, Any], platform: str) -> Optional[str]:
+    logger.debug("Agent decision: %s", decision)
+    """Translate agent decisions into concrete responses."""
+    if not isinstance(decision, dict):
+        return None
+
+    try:
+        confidence = float(decision.get('confidence', 0) or 0)
+    except (TypeError, ValueError):
+        confidence = 0.0
+
+    action = str(decision.get('action', '')).lower()
+    if action == 'respond':
+        reply = decision.get('assistant_response')
+        if reply and confidence >= 0.35:
+            return messaging_service.format_friendly_message(str(reply), platform)
+        return None
+
+    if action == 'tool_call':
+        tool = str(decision.get('tool', '')).lower()
+        parameters = decision.get('parameters') or {}
+        return execute_agent_tool(tool, parameters, user_message, user_profile, platform)
+
+    return None
+
+
+def execute_agent_tool(
+    tool: str,
+    parameters: Dict[str, Any],
+    user_message: str,
+    user_profile: Dict[str, Any],
+    platform: str,
+) -> Optional[str]:
+    """Dispatch Bedrock agent tool invocations."""
+    if tool == 'meal_plan':
+        return handle_adaptive_meal_planning(user_message, user_profile)
+    if tool == 'nutrition_question':
+        return handle_adaptive_nutrition_question(user_message, user_profile)
+    if tool == 'subscription_info':
+        return create_subscription_info(platform)
+    if tool == 'grocery_list':
+        return handle_adaptive_grocery_list(user_profile)
+    if tool == 'small_talk':
+        return messaging_service.create_contact_experience(user_message, user_profile)
+    return None
 def handle_adaptive_conversation(user_message: str, user_profile: Dict[str, Any], platform: str, special_context: Optional[Dict[str, Any]] = None) -> str:
     """
     Handle conversation with full nutrition tracking and adaptive intelligence
@@ -298,14 +378,23 @@ def handle_adaptive_meal_planning(user_message: str, user_profile: Dict[str, Any
             # Add strategy nudge if present
             strategy_nudge = meal_plan.get('strategy_nudge')
             if strategy_nudge:
-                formatted_plan += f"\n\n💡 {strategy_nudge['message']}"
+                formatted_plan += f"
+
+💡 {strategy_nudge['message']}"
             
             # Add contextual tips
             tips = meal_plan.get('contextual_tips', [])
             if tips:
-                formatted_plan += "\n\n" + "\n".join(tips)
+                formatted_plan += "
+
+" + "
+".join(tips)
             
-            return f"{intro}\n\n{formatted_plan}\n\nLet me know how these work for you! Your feedback helps me get better! 😊"
+            return f"{intro}
+
+{formatted_plan}
+
+Let me know how these work for you! Your feedback helps me get better! 😊"
         
         else:
             return "I'm having a little trouble putting together your meal plan right now. Can you try asking again in just a moment? 🤔"
@@ -332,18 +421,29 @@ def handle_adaptive_grocery_list(user_profile: Dict[str, Any]) -> str:
             
             # Create a simple grocery list
             if ingredients:
-                grocery_list = "\n".join([f"• {ingredient}" for ingredient in ingredients[:15]])  # Limit to 15 items
+                grocery_list = "
+".join([f"• {ingredient}" for ingredient in ingredients[:15]])  # Limit to 15 items
             else:
-                grocery_list = "• Fresh vegetables\n• Lean proteins\n• Whole grains\n• Healthy fats"
+                grocery_list = "• Fresh vegetables
+• Lean proteins
+• Whole grains
+• Healthy fats"
             
-            formatted_list = f"🛒 *Grocery List*\n{grocery_list}"
+            formatted_list = f"🛒 *Grocery List*
+{grocery_list}"
             
             # Add budget-conscious tips if user is price-sensitive
             budget_sensitivity = user_profile.get('budget_envelope', {}).get('price_sensitivity')
             if budget_sensitivity == 'high':
-                formatted_list += "\n\n💰 Pro tip: Shop sales on produce and buy pantry staples in bulk!"
+                formatted_list += "
+
+💰 Pro tip: Shop sales on produce and buy pantry staples in bulk!"
             
-            return f"Perfect! Here's your shopping list based on your recent meal plan:\n\n{formatted_list}\n\nHappy shopping! 🛒"
+            return f"Perfect! Here's your shopping list based on your recent meal plan:
+
+{formatted_list}
+
+Happy shopping! 🛒"
         
         else:
             return "I'd love to make you a grocery list! First, let me create a meal plan for you. Just ask me for a 'meal plan' and I'll get you set up! 📋"
@@ -383,7 +483,11 @@ def handle_adaptive_nutrition_question(user_message: str, user_profile: Dict[str
         
         # Combine advice with modern insights
         if modern_insights:
-            advice += "\n\n" + "\n\n".join(modern_insights)
+            advice += "
+
+" + "
+
+".join(modern_insights)
         
         return advice
         
@@ -453,16 +557,27 @@ def create_adaptive_help_response(user_profile: Dict[str, Any], platform: str) -
 💡 **Modern Nutrition Coaching** - IF, gut health, plant-forward, anti-inflammatory"""
     
     if active_strategies:
-        response += f"\n🎯 **Your Active Strategies**: {', '.join(active_strategies)}"
+        response += f"
+🎯 **Your Active Strategies**: {', '.join(active_strategies)}"
     
-    response += "\n\n**Quick Commands:**\n"
-    response += "• 'stats today' - daily nutrition recap\n"
-    response += "• 'weekly report' - comprehensive week summary\n"
-    response += "• 'how can I feel better?' - personalized suggestions\n"
-    response += "• Track meals: 'ate [meal]', 'skipped lunch', etc.\n"
-    response += "• Track water: '2 cups water', '16 oz', etc.\n"
+    response += "
+
+**Quick Commands:**
+"
+    response += "• 'stats today' - daily nutrition recap
+"
+    response += "• 'weekly report' - comprehensive week summary
+"
+    response += "• 'how can I feel better?' - personalized suggestions
+"
+    response += "• Track meals: 'ate [meal]', 'skipped lunch', etc.
+"
+    response += "• Track water: '2 cups water', '16 oz', etc.
+"
     
-    response += "\n\nJust message me naturally - I understand context and remember our conversations! 😊"
+    response += "
+
+Just message me naturally - I understand context and remember our conversations! 😊"
     
     return response
 
@@ -622,36 +737,18 @@ def send_response(message_data: Dict[str, Any], response_message: str, platform:
 
 
 def create_platform_response(platform: str, success: bool) -> Dict[str, Any]:
-    """Create appropriate response based on platform"""
-    if platform in ['whatsapp', 'sms']:
-        # Twilio expects TwiML response for some endpoints
-        return {
-            'statusCode': 200,
-            'headers': {'Content-Type': 'text/xml'},
-            'body': '<?xml version="1.0" encoding="UTF-8"?><Response></Response>'
-        }
-    else:
-        # Other platforms expect JSON
-        return {
-            'statusCode': 200,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'status': 'success' if success else 'error'})
-        }
-
-
-def create_error_response(message: str, status_code: int = 400) -> Dict[str, Any]:
-    """Create error response"""
+    """Create JSON response regardless of channel."""
+    status_code = 200 if success else 500
     return {
         'statusCode': status_code,
         'headers': {'Content-Type': 'application/json'},
-        'body': json.dumps({'error': message})
+        'body': json.dumps({'success': success, 'platform': platform}),
     }
 
+async def send_response_async(message_data: Dict[str, Any], response_message: str, platform: str) -> bool:
+    """Async wrapper around send_response for compatibility."""
+    return await asyncio.to_thread(send_response, message_data, response_message, platform)
 
-def reconstruct_url(event: Dict[str, Any]) -> str:
-    """Reconstruct full URL from Lambda event"""
-    headers = event.get('headers', {})
-    host = headers.get('Host', headers.get('host', ''))
-    path = event.get('path', '')
-    
-    return f"https://{host}{path}"
+
+
+

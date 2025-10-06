@@ -421,65 +421,19 @@ def _update_user_learning(user_id: str, message: str, response: str) -> None:
 
 
 def _verify_webhook_signature(event: Dict[str, Any], platform: str) -> bool:
-    """Verify webhook signature for security"""
+    """Verify webhook signature for security."""
     try:
-        if platform in ['whatsapp', 'sms']:
-            signature = event.get('headers', {}).get('X-Twilio-Signature', '')
-            body = event.get('body', '')
-            url = _reconstruct_url(event)
-            
-            return messaging_service.verify_twilio_signature(signature, body, url)
-        
-        # Add other platform verification as needed
-        return True
-        
+        return messaging_service.verify_event_signature(event, platform)
     except Exception as e:
         logger.error(f"Error verifying webhook signature: {str(e)}")
         return False
 
-
-def _reconstruct_url(event: Dict[str, Any]) -> str:
-    """Reconstruct the original webhook URL for signature verification"""
-    try:
-        headers = event.get('headers', {})
-        host = headers.get('Host', '')
-        path = event.get('requestContext', {}).get('path', '')
-        stage = event.get('requestContext', {}).get('stage', '')
-        
-        if stage and stage != 'prod':
-            return f"https://{host}/{stage}{path}"
-        else:
-            return f"https://{host}{path}"
-            
-    except Exception as e:
-        logger.error(f"Error reconstructing URL: {str(e)}")
-        return ""
-
-
 def _create_platform_response(platform: str, success: bool) -> Dict[str, Any]:
-    """Create appropriate response format for each platform"""
+    """Create JSON response for downstream integrations."""
     status_code = 200 if success else 500
-    
-    if platform in ['whatsapp', 'sms']:
-        # Twilio expects TwiML response
-        return {
-            'statusCode': status_code,
-            'headers': {'Content-Type': 'application/xml'},
-            'body': '<?xml version="1.0" encoding="UTF-8"?><Response></Response>'
-        }
-    else:
-        # Generic JSON response
-        return {
-            'statusCode': status_code,
-            'headers': {'Content-Type': 'application/json'},
-            'body': json.dumps({'success': success})
-        }
-
-
-def _create_error_response(message: str, status_code: int = 400) -> Dict[str, Any]:
-    """Create error response"""
     return {
         'statusCode': status_code,
         'headers': {'Content-Type': 'application/json'},
-        'body': json.dumps({'error': message})
+        'body': json.dumps({'success': success, 'platform': platform}),
     }
+

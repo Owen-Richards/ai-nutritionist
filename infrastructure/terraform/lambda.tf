@@ -2,9 +2,20 @@
 
 data "aws_caller_identity" "current" {}
 
+locals {
+  lambda_vpc_id = var.enable_vpc ? (
+    var.vpc_id != "" ? var.vpc_id : try(aws_vpc.main[0].id, null)
+  ) : null
+
+  lambda_subnet_ids = var.enable_vpc ? (
+    length(var.vpc_subnet_ids) > 0 ? var.vpc_subnet_ids : try(aws_subnet.private[*].id, [])
+  ) : []
+}
+
 # Universal Message Handler Lambda Function
 resource "aws_lambda_function" "universal_message_handler" {
   filename         = "${path.module}/../deployment/lambda_package.zip"
+  source_code_hash = filebase64sha256("${path.module}/../deployment/lambda_package.zip")
   function_name    = "${var.project_name}-universal-message-handler-${var.environment}"
   role            = aws_iam_role.lambda_execution.arn
   handler         = "handlers.universal_message_handler.lambda_handler"
@@ -32,9 +43,9 @@ resource "aws_lambda_function" "universal_message_handler" {
   }
 
   dynamic "vpc_config" {
-    for_each = var.enable_vpc ? [1] : []
+    for_each = local.lambda_vpc_id != null && length(local.lambda_subnet_ids) > 0 ? [1] : []
     content {
-      subnet_ids         = var.vpc_subnet_ids
+      subnet_ids         = local.lambda_subnet_ids
       security_group_ids = [aws_security_group.lambda[0].id]
     }
   }
@@ -65,6 +76,7 @@ resource "aws_lambda_function" "universal_message_handler" {
 # Billing Webhook Lambda Function
 resource "aws_lambda_function" "billing_handler" {
   filename         = "${path.module}/../deployment/lambda_package.zip"
+  source_code_hash = filebase64sha256("${path.module}/../deployment/lambda_package.zip")
   function_name    = "${var.project_name}-billing-handler-${var.environment}"
   role            = aws_iam_role.billing_lambda_execution.arn
   handler         = "handlers.billing_handler.lambda_handler"
@@ -99,6 +111,7 @@ resource "aws_lambda_function" "billing_handler" {
 # Scheduler Lambda Function
 resource "aws_lambda_function" "scheduler_handler" {
   filename         = "${path.module}/../deployment/lambda_package.zip"
+  source_code_hash = filebase64sha256("${path.module}/../deployment/lambda_package.zip")
   function_name    = "${var.project_name}-scheduler-handler-${var.environment}"
   role            = aws_iam_role.scheduler_lambda_execution.arn
   handler         = "handlers.scheduler_handler.lambda_handler"
@@ -114,6 +127,14 @@ resource "aws_lambda_function" "scheduler_handler" {
       LOG_LEVEL                 = var.log_level
       ENABLE_COST_OPTIMIZATION  = var.enable_cost_optimization
       PROMPT_CACHE_TTL          = var.prompt_cache_ttl
+    }
+  }
+
+  dynamic "vpc_config" {
+    for_each = local.lambda_vpc_id != null && length(local.lambda_subnet_ids) > 0 ? [1] : []
+    content {
+      subnet_ids         = local.lambda_subnet_ids
+      security_group_ids = [aws_security_group.lambda[0].id]
     }
   }
 
@@ -250,11 +271,11 @@ resource "aws_lambda_function_url" "universal_message_handler" {
 
 # Security Group for Lambda (if VPC enabled)
 resource "aws_security_group" "lambda" {
-  count = var.enable_vpc ? 1 : 0
+  count = local.lambda_vpc_id != null ? 1 : 0
   
   name        = "${var.project_name}-lambda-${var.environment}"
   description = "Security group for Lambda functions"
-  vpc_id      = var.vpc_id
+  vpc_id      = local.lambda_vpc_id
 
   egress {
     from_port   = 0
