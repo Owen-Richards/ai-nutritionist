@@ -1,0 +1,270 @@
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  name: ai-nutritionist-istio
+  namespace: istio-system
+spec:
+  values:
+    global:
+      meshID: ai-nutritionist-mesh
+      meshExpansion:
+        enabled: true
+      network: ai-nutritionist-network
+      hub: docker.io/istio
+      tag: 1.20.0
+    pilot:
+      traceSampling: 10.0
+      env:
+        EXTERNAL_ISTIOD: false
+    telemetry:
+      v2:
+        prometheus:
+          configOverride:
+            metric_relabeling_configs:
+            - source_labels: [__name__]
+              regex: 'istio_.*'
+              target_label: __tmp_istio_metric
+            - source_labels: [__tmp_istio_metric, __name__]
+              regex: '(.*);.*'
+              target_label: __name__
+              replacement: '${1}'
+  components:
+    pilot:
+      k8s:
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        hpaSpec:
+          maxReplicas: 5
+          minReplicas: 2
+          metrics:
+          - type: Resource
+            resource:
+              name: cpu
+              target:
+                type: Utilization
+                averageUtilization: 80
+    ingressGateways:
+    - name: istio-ingressgateway
+      enabled: true
+      k8s:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+        hpaSpec:
+          maxReplicas: 10
+          minReplicas: 2
+        service:
+          type: LoadBalancer
+          ports:
+          - port: 15021
+            targetPort: 15021
+            name: status-port
+          - port: 80
+            targetPort: 8080
+            name: http2
+          - port: 443
+            targetPort: 8443
+            name: https
+          - port: 31400
+            targetPort: 31400
+            name: tcp
+          - port: 15443
+            targetPort: 15443
+            name: tls
+    egressGateways:
+    - name: istio-egressgateway
+      enabled: true
+      k8s:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+
+---
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: ai-nutritionist-gateway
+  namespace: ai-nutritionist
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - ai-nutritionist.com
+    - api.ai-nutritionist.com
+    - admin.ai-nutritionist.com
+    tls:
+      httpsRedirect: true
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      credentialName: ai-nutritionist-tls
+    hosts:
+    - ai-nutritionist.com
+    - api.ai-nutritionist.com
+    - admin.ai-nutritionist.com
+
+---
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: ai-nutritionist-vs
+  namespace: ai-nutritionist
+spec:
+  hosts:
+  - ai-nutritionist.com
+  - api.ai-nutritionist.com
+  gateways:
+  - ai-nutritionist-gateway
+  http:
+  - match:
+    - uri:
+        prefix: /api/v1/nutrition
+    route:
+    - destination:
+        host: nutrition-service.ai-nutritionist.svc.cluster.local
+        port:
+          number: 8080
+    fault:
+      delay:
+        percentage:
+          value: 0.1
+        fixedDelay: 5s
+    retries:
+      attempts: 3
+      perTryTimeout: 30s
+      retryOn: 5xx,reset,connect-failure,refused-stream
+    timeout: 60s
+  - match:
+    - uri:
+        prefix: /api/v1/ai-coach
+    route:
+    - destination:
+        host: ai-coach-service.ai-nutritionist.svc.cluster.local
+        port:
+          number: 8080
+    fault:
+      delay:
+        percentage:
+          value: 0.1
+        fixedDelay: 5s
+    retries:
+      attempts: 3
+      perTryTimeout: 60s
+      retryOn: 5xx,reset,connect-failure,refused-stream
+    timeout: 120s
+  - match:
+    - uri:
+        prefix: /api/v1/health
+    route:
+    - destination:
+        host: health-tracking-service.ai-nutritionist.svc.cluster.local
+        port:
+          number: 8080
+  - match:
+    - uri:
+        prefix: /api/v1/messaging
+    route:
+    - destination:
+        host: messaging-service.ai-nutritionist.svc.cluster.local
+        port:
+          number: 8080
+  - match:
+    - uri:
+        prefix: /api/v1/payments
+    route:
+    - destination:
+        host: payment-service.ai-nutritionist.svc.cluster.local
+        port:
+          number: 8080
+  - match:
+    - headers:
+        host:
+          exact: ai-nutritionist.com
+    route:
+    - destination:
+        host: web-app.ai-nutritionist.svc.cluster.local
+        port:
+          number: 80
+
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: ai-nutritionist-destination-rules
+  namespace: ai-nutritionist
+spec:
+  host: "*.ai-nutritionist.svc.cluster.local"
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 50
+        http2MaxRequests: 100
+        maxRequestsPerConnection: 10
+        maxRetries: 3
+        consecutiveGatewayErrors: 5
+        interval: 30s
+        baseEjectionTime: 30s
+        maxEjectionPercent: 50
+    loadBalancer:
+      simple: LEAST_CONN
+    outlierDetection:
+      consecutiveGatewayErrors: 5
+      consecutive5xxErrors: 5
+      interval: 30s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+      minHealthPercent: 50
+
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: ai-coach-service-circuit-breaker
+  namespace: ai-nutritionist
+spec:
+  host: ai-coach-service.ai-nutritionist.svc.cluster.local
+  trafficPolicy:
+    connectionPool:
+      tcp:
+        maxConnections: 50
+      http:
+        http1MaxPendingRequests: 25
+        http2MaxRequests: 50
+        maxRequestsPerConnection: 5
+        maxRetries: 2
+        consecutiveGatewayErrors: 3
+        interval: 30s
+        baseEjectionTime: 30s
+        maxEjectionPercent: 30
+    outlierDetection:
+      consecutiveGatewayErrors: 3
+      consecutive5xxErrors: 3
+      interval: 15s
+      baseEjectionTime: 15s
+      maxEjectionPercent: 30
+      minHealthPercent: 70

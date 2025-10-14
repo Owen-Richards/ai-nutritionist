@@ -1,0 +1,13 @@
+{
+  "title": "Compras",
+  "description": "Marca los artículos mientras compras o comparte la lista.",
+  "thisWeek": "Lista de esta semana",
+  "empty": {
+    "title": "Lista no disponible",
+    "body": "Cargaremos tus compras en cuanto el plan se sincronice."
+  },
+  "error": {
+    "title": "Compras no disponibles",
+    "body": "No pudimos cargar la lista de compras. Inténtalo cuando tengas conexión."
+  }
+}

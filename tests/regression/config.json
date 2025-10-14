@@ -1,0 +1,173 @@
+{
+  "project_root": ".",
+  "test_root": "tests",
+  "src_root": "src",
+  
+  "parallel": {
+    "max_workers": 4,
+    "worker_timeout": 600,
+    "chunk_size": 10,
+    "enable_xdist": true,
+    "distribute_by": "worksteal"
+  },
+  
+  "flake_detection": {
+    "enabled": true,
+    "min_runs": 5,
+    "max_runs": 20,
+    "failure_threshold": 0.2,
+    "quarantine_flaky": true,
+    "report_flaky": true
+  },
+  
+  "reporting": {
+    "formats": ["json", "html", "junit"],
+    "output_dir": "test-reports",
+    "include_coverage": true,
+    "coverage_threshold": 80.0,
+    "include_performance": true,
+    "include_trends": true
+  },
+  
+  "test_suites": [
+    {
+      "name": "critical_path",
+      "category": "integration",
+      "priority": "critical",
+      "path": "tests/critical",
+      "patterns": ["test_*critical*.py", "test_*core*.py"],
+      "markers": ["critical"],
+      "timeout": 600,
+      "retry_count": 2,
+      "dependencies": [],
+      "environment_vars": {
+        "TEST_MODE": "critical"
+      },
+      "setup_commands": [],
+      "teardown_commands": []
+    },
+    {
+      "name": "unit_tests",
+      "category": "unit", 
+      "priority": "high",
+      "path": "tests/unit",
+      "patterns": ["test_*.py"],
+      "markers": ["unit"],
+      "timeout": 300,
+      "retry_count": 0,
+      "dependencies": [],
+      "environment_vars": {
+        "TEST_MODE": "unit"
+      },
+      "setup_commands": [],
+      "teardown_commands": []
+    },
+    {
+      "name": "integration_tests",
+      "category": "integration",
+      "priority": "high", 
+      "path": "tests/integration",
+      "patterns": ["test_*.py"],
+      "markers": ["integration"],
+      "timeout": 900,
+      "retry_count": 1,
+      "dependencies": [],
+      "environment_vars": {
+        "TEST_MODE": "integration",
+        "AWS_DEFAULT_REGION": "us-east-1"
+      },
+      "setup_commands": [],
+      "teardown_commands": []
+    },
+    {
+      "name": "bug_regression",
+      "category": "integration",
+      "priority": "high",
+      "path": "tests/regression", 
+      "patterns": ["test_bug_regression.py"],
+      "markers": ["bug_regression", "regression"],
+      "timeout": 450,
+      "retry_count": 1,
+      "dependencies": [],
+      "environment_vars": {
+        "TEST_MODE": "regression"
+      },
+      "setup_commands": [],
+      "teardown_commands": []
+    },
+    {
+      "name": "api_tests",
+      "category": "api",
+      "priority": "high",
+      "path": "tests/api",
+      "patterns": ["test_*api*.py"],
+      "markers": ["api"],
+      "timeout": 450,
+      "retry_count": 0,
+      "dependencies": [],
+      "environment_vars": {
+        "TEST_MODE": "api"
+      },
+      "setup_commands": [],
+      "teardown_commands": []
+    },
+    {
+      "name": "performance_tests",
+      "category": "performance",
+      "priority": "medium",
+      "path": "tests/performance",
+      "patterns": ["test_*performance*.py", "test_*perf*.py"],
+      "markers": ["performance", "slow"],
+      "timeout": 1800,
+      "retry_count": 2,
+      "dependencies": [],
+      "environment_vars": {
+        "TEST_MODE": "performance"
+      },
+      "setup_commands": [],
+      "teardown_commands": []
+    },
+    {
+      "name": "security_tests",
+      "category": "security",
+      "priority": "high",
+      "path": "tests/security",
+      "patterns": ["test_*security*.py", "test_*auth*.py"],
+      "markers": ["security"],
+      "timeout": 600,
+      "retry_count": 0,
+      "dependencies": [],
+      "environment_vars": {
+        "TEST_MODE": "security"
+      },
+      "setup_commands": [],
+      "teardown_commands": []
+    },
+    {
+      "name": "e2e_tests",
+      "category": "e2e",
+      "priority": "medium",
+      "path": "tests/e2e",
+      "patterns": ["test_*.py"],
+      "markers": ["e2e"],
+      "timeout": 1200,
+      "retry_count": 1,
+      "dependencies": [],
+      "environment_vars": {
+        "TEST_MODE": "e2e"
+      },
+      "setup_commands": [],
+      "teardown_commands": []
+    }
+  ],
+  
+  "python_executable": "python",
+  "pytest_executable": "pytest",
+  "virtual_env": null,
+  
+  "ci_mode": false,
+  "artifact_retention_days": 30,
+  
+  "slack_webhook": null,
+  "email_recipients": []
+}

@@ -1,0 +1,125 @@
+{
+  "metadata": {
+    "generated": "2025-10-14",
+    "scope": "structural_improvements",
+    "principle": "maintain_clean_architecture_boundaries"
+  },
+  "proposed_relocations": {
+    "compliance_automation_assessment": {
+      "from": "compliance-automation/",
+      "options": [
+        {
+          "option": "A",
+          "to": "packages/compliance-automation/",
+          "rationale": "Integrate as monorepo package if needed by main application",
+          "impact": "Medium - requires dependency integration",
+          "breaking_change": false,
+          "prerequisites": [
+            "Assess if compliance features are needed",
+            "Merge requirements into main requirements.txt",
+            "Add to packages/ structure",
+            "Update imports in consuming code (if any)"
+          ]
+        },
+        {
+          "option": "B",
+          "to": "REMOVE",
+          "rationale": "Remove if standalone project accidentally included",
+          "impact": "None - not referenced",
+          "breaking_change": false,
+          "prerequisites": [
+            "Confirm with team this is not needed",
+            "Verify no hidden references",
+            "Create backup if needed"
+          ]
+        },
+        {
+          "option": "C",
+          "to": "docs/archive/compliance-automation-framework/",
+          "rationale": "Archive if planning/design artifact",
+          "impact": "Low - preserves for reference",
+          "breaking_change": false,
+          "prerequisites": [
+            "Confirm no future use planned"
+          ]
+        }
+      ],
+      "recommendation": "Option B - REMOVE (appears to be accidentally included standalone project)",
+      "confidence": "high",
+      "evidence": [
+        "Complete standalone framework with own requirements",
+        "No imports from main codebase",
+        "Not referenced in any tests",
+        "Has own deployment script",
+        "Would need significant integration work if intended for use"
+      ]
+    }
+  },
+  "no_relocations_needed": {
+    "src_services": {
+      "current": "src/services/*",
+      "status": "WELL_ORGANIZED",
+      "reason": "Clean domain separation with proper boundaries"
+    },
+    "infrastructure": {
+      "current": "infrastructure/terraform/",
+      "status": "WELL_ORGANIZED",
+      "reason": "Infrastructure as Code properly separated"
+    },
+    "tests": {
+      "current": "tests/",
+      "status": "WELL_ORGANIZED",
+      "reason": "Test structure mirrors source structure"
+    },
+    "packages": {
+      "current": "packages/",
+      "status": "WELL_ORGANIZED",
+      "reason": "Shared packages properly separated"
+    }
+  },
+  "documentation_relocations": {
+    "architecture_docs": {
+      "files": [
+        "HEXAGONAL_ARCHITECTURE_REFACTORING.md",
+        "HEXAGONAL_ARCHITECTURE_SUCCESS.md"
+      ],
+      "from": "root",
+      "to": "docs/architecture/",
+      "rationale": "Group architecture decision records",
+      "impact": "Low - improves discoverability"
+    },
+    "security_docs": {
+      "files": [
+        "SECURITY_FINAL_REPORT.md",
+        "SECURITY_IMPLEMENTATION_COMPLETE.md"
+      ],
+      "from": "root",
+      "to": "docs/security/",
+      "rationale": "Group security documentation",
+      "impact": "Low - improves organization"
+    },
+    "implementation_history": {
+      "pattern": "*_SUMMARY.md",
+      "from": "root",
+      "to": "docs/implementation/",
+      "rationale": "Consolidate implementation records",
+      "impact": "Medium - improves maintainability",
+      "note": "Consider merging into single timeline doc"
+    }
+  },
+  "no_code_relocations": {
+    "note": "Source code structure is well-organized. No relocations needed.",
+    "strengths": [
+      "Clean separation between services, adapters, models",
+      "Infrastructure properly separated",
+      "Tests mirror source structure",
+      "Packages follow monorepo conventions"
+    ]
+  },
+  "summary": {
+    "code_relocations": 0,
+    "doc_relocations": 3,
+    "module_assessment": 1,
+    "total_impact": "low_to_medium"
+  }
+}

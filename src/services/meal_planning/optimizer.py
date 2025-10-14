@@ -7,6 +7,8 @@ import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 
+from .repository import GeneratedMealPlan, MealEntry
+
 logger = logging.getLogger(__name__)
 
 
@@ -400,3 +402,155 @@ class MealPlanService:
             tips.append("Meal prep ingredients on Sunday for easier weekday cooking")
         
         return tips
+
+
+class SmartSwapEngine:
+    """Generate smart swap suggestions balancing prep time, cost, and allergies."""
+
+    def suggest_swaps(
+        self,
+        plan: GeneratedMealPlan,
+        *,
+        meal_id: Optional[str] = None,
+        constraints: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
+        if plan is None or not getattr(plan, 'meals', None):
+            return []
+        constraints = constraints or {}
+        target = self._select_target_meal(plan, meal_id)
+        if target is None:
+            return []
+
+        suggestions: List[Dict[str, Any]] = []
+        quick = self._build_quick_swap(plan, target, constraints)
+        if quick:
+            suggestions.append(quick)
+        budget = self._build_budget_swap(plan, target, constraints)
+        if budget:
+            suggestions.append(budget)
+        allergen = self._build_allergen_safe_swap(plan, target, constraints)
+        if allergen:
+            suggestions.append(allergen)
+        return self._rank_suggestions(target, suggestions)
+
+    def _select_target_meal(
+        self, plan: GeneratedMealPlan, meal_id: Optional[str]
+    ) -> Optional[MealEntry]:
+        meals = plan.meals
+        if not meals:
+            return None
+        if meal_id:
+            for meal in meals:
+                if meal.meal_id == meal_id:
+                    return meal
+        return meals[0]
+
+    def _build_quick_swap(
+        self, plan: GeneratedMealPlan, meal: MealEntry, constraints: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        max_minutes = constraints.get('max_minutes') or constraints.get('max_prep_minutes')
+        if max_minutes is None:
+            max_minutes = (plan.metadata or {}).get('preferences', {}).get('max_prep_minutes')
+        try:
+            max_minutes = int(max_minutes) if max_minutes is not None else None
+        except (TypeError, ValueError):
+            max_minutes = None
+        if max_minutes is None and meal.prep_minutes <= 20:
+            return None
+        quick_minutes = max_minutes if max_minutes is not None else max(meal.prep_minutes - 10, 10)
+        quick_minutes = max(5, min(quick_minutes, meal.prep_minutes - 1 if meal.prep_minutes > 5 else meal.prep_minutes))
+        if quick_minutes >= meal.prep_minutes:
+            return None
+        description = f"Same flavours with prep trimmed to about {quick_minutes} minutes."
+        return {
+            'swap_id': f"{meal.meal_id}:quick",
+            'title': f"Quick {meal.title}",
+            'description': description,
+            'prep_minutes': quick_minutes,
+            'cost': meal.cost,
+            'reasons': ['time_saver'],
+            'badge': 'quick',
+            'deep_link_path': self._variant_path(plan, meal, 'quick'),
+            'score': 0.82,
+        }
+
+    def _build_budget_swap(
+        self, plan: GeneratedMealPlan, meal: MealEntry, constraints: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        budget_limit = constraints.get('budget_limit') or constraints.get('budget')
+        if budget_limit is None:
+            budget_limit = (plan.metadata or {}).get('preferences', {}).get('budget_limit')
+        try:
+            budget_limit = float(budget_limit) if budget_limit is not None else None
+        except (TypeError, ValueError):
+            budget_limit = None
+        if budget_limit is None and meal.cost <= 6.0:
+            return None
+        target_cost = round(min(meal.cost, budget_limit) if budget_limit is not None else max(meal.cost * 0.85, meal.cost - 1.0), 2)
+        target_cost = max(target_cost, 0.5)
+        if target_cost >= meal.cost and budget_limit is None:
+            return None
+        description = "Swaps premium ingredients for pantry staples under $" + f"{target_cost:.2f}" + " per serving."
+        return {
+            'swap_id': f"{meal.meal_id}:budget",
+            'title': f"Budget-friendly {meal.title}",
+            'description': description,
+            'prep_minutes': meal.prep_minutes,
+            'cost': target_cost,
+            'reasons': ['budget_friendly'],
+            'badge': 'budget',
+            'deep_link_path': self._variant_path(plan, meal, 'budget'),
+            'score': 0.74,
+        }
+
+    def _build_allergen_safe_swap(
+        self, plan: GeneratedMealPlan, meal: MealEntry, constraints: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        allergens = self._normalise_set(constraints.get('allergies'))
+        if not allergens:
+            prefs = (plan.metadata or {}).get('preferences', {})
+            allergens = self._normalise_set(prefs.get('allergies'))
+        if not allergens:
+            return None
+        ingredients = [item.lower() for item in meal.ingredients]
+        if not any(any(allergen in ingredient for allergen in allergens) for ingredient in ingredients):
+            return None
+        safe_ingredients = [ing for ing in meal.ingredients if not any(allergen in ing.lower() for allergen in allergens)]
+        description = "Tweaks ingredients to stay clear of " + ", ".join(sorted(allergens)) + "."
+        return {
+            'swap_id': f"{meal.meal_id}:allergen_safe",
+            'title': f"Allergen-safe {meal.title}",
+            'description': description,
+            'prep_minutes': meal.prep_minutes,
+            'cost': meal.cost,
+            'reasons': ['allergen_safe'],
+            'badge': 'allergen-safe',
+            'ingredients': safe_ingredients,
+            'deep_link_path': self._variant_path(plan, meal, 'allergen'),
+            'score': 0.9,
+        }
+
+    def _rank_suggestions(self, meal: MealEntry, suggestions: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        unique: List[Dict[str, Any]] = []
+        seen = set()
+        for suggestion in suggestions:
+            if not suggestion:
+                continue
+            swap_id = suggestion.get('swap_id')
+            if not swap_id or swap_id in seen:
+                continue
+            seen.add(swap_id)
+            unique.append(suggestion)
+        unique.sort(key=lambda item: (-item.get('score', 0.0), item.get('prep_minutes', meal.prep_minutes)))
+        return unique
+
+    def _variant_path(self, plan: GeneratedMealPlan, meal: MealEntry, variant: str) -> str:
+        return f"/plans/{plan.plan_id}/meals/{meal.meal_id}/swap?variant={variant}"
+
+    @staticmethod
+    def _normalise_set(values: Optional[Any]) -> set:
+        if not values:
+            return set()
+        if isinstance(values, (list, tuple, set)):
+            return {str(value).lower() for value in values}
+        return {str(values).lower()}

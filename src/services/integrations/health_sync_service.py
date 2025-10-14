@@ -4,9 +4,7 @@ from __future__ import annotations
 
 from typing import Dict
 
-from src.models.user import UserProfile, WearableIntegration
-from src.services.analytics.analytics_service import AnalyticsService
-from src.services.data.federated_storage import FederatedHealthStorage
+from packages.core.src.entities.user import UserProfile, WearableIntegrationfrom services.analytics_service.src.application.analytics_service import AnalyticsServicefrom src.services.data.federated_storage import FederatedHealthStorage
 from src.services.health.adapters import SyncResult, WearableAdapter
 
 

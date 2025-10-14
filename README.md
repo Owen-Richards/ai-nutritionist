@@ -97,3 +97,34 @@ sam local start-api
 ## License
 
 MIT License. See `LICENSE` for details.
+
+## Frontend Applications & Packages
+
+The repository now includes a unified JavaScript workspace for client experiences:
+
+- `apps/mobile` – Expo + React Native mobile app (expo-router) sharing UI and schemas
+- `apps/web` – Next.js console consuming the same shared packages
+- `packages/ui` – React Native compatible component library used across apps
+- `packages/api-client` – Fetch wrapper + OpenAPI codegen target for backend endpoints
+- `packages/schemas` – Zod contracts for plans, meals, preferences shared across JS clients
+
+### Getting Started (JavaScript workspace)
+
+```bash
+# install dependencies (uses Yarn workspaces)
+yarn install
+
+# start the mobile app (Expo)
+yarn dev:mobile
+
+# run the web app from its workspace
+yarn workspace @ai-health/web dev
+```
+
+> Note: OpenAPI specs live in `docs/api`. Generate client types with `yarn workspace @ai-health/api-client run generate` once the spec is defined.
+### Mobile app best practices snapshot
+- Expo Router with typed tab navigation and modal stack
+- Central `AppProviders` wiring QueryClient, theme, secure token storage, and monitoring hooks
+- Shared UI primitives (`Screen`, `Heading`, `Card`) and design tokens for consistent spacing/colors
+- React Query data hooks (`useMealPlans`, `useGroceryList`, `useEntitlements`) with API fallbacks
+- ESLint (`eslint-config-expo`) + TypeScript paths/aliases for maintainability

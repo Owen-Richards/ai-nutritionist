@@ -3,26 +3,54 @@ AI Nutritionist - User Data Models
 Defines user profile, preferences, and related data structures
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
 from enum import Enum
 
-from src.config.constants import SubscriptionTier, DietaryRestriction, GoalType
+try:
+    from packages.shared.types import (
+        UserID, SubscriptionTier, DietaryRestriction, GoalType,
+        DateTime, OptionalDateTime, JSONDict, NonEmptyStr,
+        PositiveInt, NonNegativeInt, NonNegativeFloat, OptionalFloat, StringList,
+        EmailStr, PhoneStr, OptionalStr
+    )
+    from ..utils.datetime_utils import utc_now
+except ImportError:
+    # Fallback imports for backward compatibility
+    from src.config.constants import SubscriptionTier, DietaryRestriction, GoalType
+    try:
+        from src.utils.datetime_utils import utc_now
+    except ImportError:
+        def utc_now() -> datetime:
+            return datetime.utcnow()
+    
+    # Type aliases for fallback
+    UserID = str
+    DateTime = datetime
+    OptionalDateTime = Optional[datetime]
+    JSONDict = Dict[str, Any]
+    NonEmptyStr = str
+    PositiveInt = int
+    NonNegativeFloat = float
+    OptionalFloat = Optional[float]
+    StringList = List[str]
 
 
 @dataclass
 class UserGoal:
     """Individual user goal with constraints and priority"""
     goal_type: GoalType
-    priority: int  # 1-5, where 5 is highest priority
-    target_value: Optional[float] = None  # Target weight, budget, etc.
-    target_date: Optional[datetime] = None
-    constraints: Dict[str, Any] = field(default_factory=dict)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    priority: PositiveInt  # 1-5, where 5 is highest priority
+    target_value: OptionalFloat = None  # Target weight, budget, etc.
+    target_date: OptionalDateTime = None
+    constraints: JSONDict = field(default_factory=dict)
+    created_at: DateTime = field(default_factory=utc_now)
     is_active: bool = True
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> JSONDict:
         return {
             'goal_type': self.goal_type.value,
             'priority': self.priority,
@@ -34,7 +62,7 @@ class UserGoal:
         }
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'UserGoal':
+    def from_dict(cls, data: JSONDict) -> UserGoal:
         return cls(
             goal_type=GoalType(data['goal_type']),
             priority=data['priority'],
@@ -49,13 +77,13 @@ class UserGoal:
 @dataclass
 class NutritionTargets:
     """Daily nutrition targets for user"""
-    calories: int
-    protein_grams: float
-    carbs_grams: float
-    fat_grams: float
-    fiber_grams: float = 25
-    sodium_mg: float = 2300
-    sugar_grams: float = 50
+    calories: PositiveInt
+    protein_grams: NonNegativeFloat
+    carbs_grams: NonNegativeFloat
+    fat_grams: NonNegativeFloat
+    fiber_grams: NonNegativeFloat = 25
+    sodium_mg: NonNegativeFloat = 2300
+    sugar_grams: NonNegativeFloat = 50
     
     # Calculated properties
     @property
@@ -70,7 +98,7 @@ class NutritionTargets:
     def fat_percent(self) -> float:
         return (self.fat_grams * 9) / self.calories * 100
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> JSONDict:
         return {
             'calories': self.calories,
             'protein_grams': self.protein_grams,
@@ -82,28 +110,28 @@ class NutritionTargets:
         }
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'NutritionTargets':
+    def from_dict(cls, data: JSONDict) -> 'NutritionTargets':
         return cls(**data)
 
 
 @dataclass
 class UserPreferences:
     """User cooking and dietary preferences"""
-    household_size: int = 2
-    weekly_budget: float = 75.0
+    household_size: PositiveInt = 2
+    weekly_budget: NonNegativeFloat = 75.0
     dietary_restrictions: List[DietaryRestriction] = field(default_factory=list)
-    dietary_patterns: List[str] = field(default_factory=list)
-    intolerances: List[str] = field(default_factory=list)
-    preference_tags: List[str] = field(default_factory=list)
-    cuisine_preferences: List[str] = field(default_factory=lambda: ["american", "italian"])
+    dietary_patterns: StringList = field(default_factory=list)
+    intolerances: StringList = field(default_factory=list)
+    preference_tags: StringList = field(default_factory=list)
+    cuisine_preferences: StringList = field(default_factory=lambda: ["american", "italian"])
     cooking_skill: str = "beginner"  # beginner, intermediate, advanced
-    max_prep_time: int = 30  # minutes
-    kitchen_equipment: List[str] = field(default_factory=lambda: ["stove", "oven", "microwave"])
-    allergens: List[str] = field(default_factory=list)
-    favorite_ingredients: List[str] = field(default_factory=list)
-    disliked_ingredients: List[str] = field(default_factory=list)
+    max_prep_time: PositiveInt = 30  # minutes
+    kitchen_equipment: StringList = field(default_factory=lambda: ["stove", "oven", "microwave"])
+    allergens: StringList = field(default_factory=list)
+    favorite_ingredients: StringList = field(default_factory=list)
+    disliked_ingredients: StringList = field(default_factory=list)
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> JSONDict:
         return {
             'household_size': self.household_size,
             'weekly_budget': self.weekly_budget,
@@ -121,7 +149,7 @@ class UserPreferences:
         }
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'UserPreferences':
+    def from_dict(cls, data: JSONDict) -> 'UserPreferences':
         return cls(
             household_size=data.get('household_size', 2),
             weekly_budget=data.get('weekly_budget', 75.0),
@@ -143,71 +171,71 @@ class UserPreferences:
 class MedicalCaution:
     """Clinical note that should influence recommendations."""
 
-    condition: str
+    condition: NonEmptyStr
     severity: str  # e.g. low, moderate, high
-    notes: Optional[str] = None
-    clinician: Optional[str] = None
-    reviewed_at: Optional[datetime] = None
+    notes: OptionalStr = None
+    clinician: OptionalStr = None
+    reviewed_at: OptionalDateTime = None
 
 
 @dataclass
 class WearableIntegration:
     """Represents an authorised wearable or health-data connection."""
 
-    provider: str  # apple_health, garmin, strava, fitbit, etc.
-    external_user_id: str
-    access_token: Optional[str] = None
-    refresh_token: Optional[str] = None
-    expires_at: Optional[datetime] = None
-    scopes: List[str] = field(default_factory=list)
-    last_sync_at: Optional[datetime] = None
-    consent_scopes: List[str] = field(default_factory=list)
+    provider: NonEmptyStr  # apple_health, garmin, strava, fitbit, etc.
+    external_user_id: NonEmptyStr
+    access_token: OptionalStr = None
+    refresh_token: OptionalStr = None
+    expires_at: OptionalDateTime = None
+    scopes: StringList = field(default_factory=list)
+    last_sync_at: OptionalDateTime = None
+    consent_scopes: StringList = field(default_factory=list)
 
 
 @dataclass
 class InventoryLink:
     """Link to a persisted inventory/pantry record."""
 
-    inventory_id: str
-    location: str  # pantry, fridge, freezer, etc.
-    last_synced_at: Optional[datetime] = None
+    inventory_id: NonEmptyStr
+    location: NonEmptyStr  # pantry, fridge, freezer, etc.
+    last_synced_at: OptionalDateTime = None
     auto_sync: bool = True
 
 
 @dataclass 
 class UserProfile:
     """Complete user profile with all preferences and settings"""
-    user_id: str
-    phone_number: str
+    user_id: UserID
+    phone_number: PhoneStr
     subscription_tier: SubscriptionTier = SubscriptionTier.FREE
     goals: List[UserGoal] = field(default_factory=list)
     preferences: UserPreferences = field(default_factory=UserPreferences)
     nutrition_targets: Optional[NutritionTargets] = None
     medical_cautions: List[MedicalCaution] = field(default_factory=list)
     wearable_integrations: Dict[str, WearableIntegration] = field(default_factory=dict)
-    biometric_streams: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    biometric_streams: JSONDict = field(default_factory=dict)
     
     # Profile completion tracking
     onboarding_completed: bool = False
-    profile_completion_score: float = 0.0  # 0-1 scale
+    profile_completion_score: NonNegativeFloat = 0.0  # 0-1 scale
     
     # Usage tracking
-    meal_plans_this_month: int = 0
-    grocery_lists_this_month: int = 0
-    ai_consultations_today: int = 0
+    meal_plans_this_month: NonNegativeInt = 0
+    grocery_lists_this_month: NonNegativeInt = 0
+    ai_consultations_today: NonNegativeInt = 0
     
     # Metadata
-    created_at: datetime = field(default_factory=datetime.utcnow)
-    last_updated: datetime = field(default_factory=datetime.utcnow)
-    last_active: Optional[datetime] = None
-    timezone: str = "UTC"
-    language: str = "en"
+    created_at: DateTime = field(default_factory=datetime.utcnow)
+    last_updated: DateTime = field(default_factory=datetime.utcnow)
+    last_active: OptionalDateTime = None
+    timezone: NonEmptyStr = "UTC"
+    language: NonEmptyStr = "en"
     
     # Linked accounts (family sharing)
-    linked_users: List[str] = field(default_factory=list)
+    linked_users: List[UserID] = field(default_factory=list)
     primary_account: bool = True
-    household_roster: Dict[str, Dict[str, Any]] = field(default_factory=dict)
-    preferred_channels: List[str] = field(default_factory=lambda: ["sms"])
+    household_roster: JSONDict = field(default_factory=dict)
+    preferred_channels: StringList = field(default_factory=lambda: ["sms"])
     inventory_links: List[InventoryLink] = field(default_factory=list)
     consent_flags: Dict[str, bool] = field(default_factory=dict)
 
@@ -244,7 +272,7 @@ class UserProfile:
         self.wearable_integrations[integration.provider] = integration
         self.last_updated = datetime.utcnow()
 
-    def record_biometric_sample(self, stream: str, payload: Dict[str, Any]) -> None:
+    def record_biometric_sample(self, stream: str, payload: JSONDict) -> None:
         """Persist a lightweight biometric snapshot in memory."""
         entry = self.biometric_streams.setdefault(stream, {})
         entry.update(payload)
@@ -331,7 +359,7 @@ class UserProfile:
         if score >= 0.8:
             self.onboarding_completed = True
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> JSONDict:
         """Convert to dictionary for storage"""
         return {
             'user_id': self.user_id,
@@ -391,7 +419,7 @@ class UserProfile:
     }
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'UserProfile':
+    def from_dict(cls, data: JSONDict) -> 'UserProfile':
         """Create from dictionary"""
         goals = [UserGoal.from_dict(g) for g in data.get('goals', [])]
         preferences = UserPreferences.from_dict(data.get('preferences', {}))

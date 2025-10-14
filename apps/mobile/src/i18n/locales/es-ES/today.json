@@ -1,0 +1,21 @@
+{
+  "title": "Hoy",
+  "welcome": "Bienvenido de nuevo, {{name}}",
+  "subscriptionSummary": "Estás en el plan {{plan}} con {{tokens, number}} tokens disponibles.",
+  "noNameSummary": "Estás en el plan {{plan}} con {{tokens, number}} tokens disponibles.",
+  "nextPlanHeading": "Destacado de la semana",
+  "actionsHeading": "Acciones rápidas",
+  "insightsHeading": "Ideas",
+  "insightsCopy": "Mostraremos adherencia, costos y preparación cuando termine la sincronización.",
+  "viewPlanCta": "Ver plan semanal",
+  "reviewGroceriesCta": "Revisar compras",
+  "logMealCta": "Registro rápido",
+  "empty": {
+    "title": "Plan en preparación",
+    "body": "Estamos generando tu plan de hoy. Vuelve a mirar en unos minutos."
+  },
+  "error": {
+    "title": "Plan no disponible",
+    "body": "No pudimos cargar el plan de hoy. Desliza para actualizar o inténtalo más tarde."
+  }
+}

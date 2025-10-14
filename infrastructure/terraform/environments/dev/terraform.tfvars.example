@@ -1,0 +1,18 @@
+# Development Environment Configuration Template
+# Copy this file to terraform.tfvars and update with your values
+
+# Required Variables
+openai_api_key    = "your-openai-api-key-here"
+nutrition_api_key = "your-nutrition-api-key-here"
+owner_email       = "dev-team@yourcompany.com"
+
+# Optional Overrides (uncomment to customize)
+# container_image = "your-registry/ai-nutritionist:dev-latest"
+# db_allocated_storage = 20
+# ecs_desired_count = 1
+
+# Development-specific settings (already optimized for dev)
+# enable_enhanced_monitoring = false
+# enable_auto_scaling = false
+# enable_waf = false
+# force_single_nat_gateway = true

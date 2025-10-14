@@ -1,0 +1,725 @@
+# Comprehensive Observability Configuration for AI Nutritionist Service Mesh
+# Distributed tracing, service metrics, dependency graph, and performance monitoring
+
+---
+# Telemetry v2 Configuration
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: ai-nutritionist-telemetry
+  namespace: ai-nutritionist
+spec:
+  # Enhanced metrics collection
+  metrics:
+  - providers:
+    - name: prometheus
+  - overrides:
+    - match:
+        metric: ALL_METRICS
+      tagOverrides:
+        request_id:
+          value: "%REQ(x-request-id)%"
+        user_id:
+          value: "%REQ(x-user-id)%"
+        user_tier:
+          value: "%REQ(x-user-tier)%"
+        deployment_version:
+          value: "%REQ(x-deployment-version)%"
+        source_service:
+          value: "%{DOWNSTREAM_LOCAL_ADDRESS}"
+  # Distributed tracing
+  tracing:
+  - providers:
+    - name: jaeger
+  # Access logging
+  accessLogging:
+  - providers:
+    - name: otel
+
+---
+# Enhanced Prometheus Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config-enhanced
+  namespace: istio-system
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+      external_labels:
+        cluster: ai-nutritionist
+        environment: production
+    
+    rule_files:
+    - "/etc/prometheus/rules/*.yml"
+    
+    alerting:
+      alertmanagers:
+      - static_configs:
+        - targets:
+          - alertmanager:9093
+    
+    scrape_configs:
+    # Istio mesh metrics
+    - job_name: 'istio-mesh'
+      kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names:
+          - istio-system
+          - ai-nutritionist
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+        action: keep
+        regex: istio-proxy;http-monitoring
+      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+        action: keep
+        regex: true
+      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+    
+    # Istiod metrics
+    - job_name: 'istiod'
+      kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names:
+          - istio-system
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+        action: keep
+        regex: istiod;http-monitoring
+    
+    # Gateway metrics
+    - job_name: 'istio-gateways'
+      kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names:
+          - istio-system
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_container_name, __meta_kubernetes_pod_container_port_name]
+        action: keep
+        regex: istio-proxy;http-envoy-prom
+    
+    # Application metrics
+    - job_name: 'ai-nutritionist-services'
+      kubernetes_sd_configs:
+      - role: endpoints
+        namespaces:
+          names:
+          - ai-nutritionist
+      relabel_configs:
+      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_scrape]
+        action: keep
+        regex: true
+      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_path]
+        action: replace
+        target_label: __metrics_path__
+        regex: (.+)
+      - source_labels: [__meta_kubernetes_service_annotation_prometheus_io_port]
+        action: replace
+        target_label: __address__
+        regex: ([^:]+)(?::\d+)?;(\d+)
+        replacement: $1:$2
+      - action: labelmap
+        regex: __meta_kubernetes_service_label_(.+)
+      - source_labels: [__meta_kubernetes_namespace]
+        action: replace
+        target_label: kubernetes_namespace
+      - source_labels: [__meta_kubernetes_service_name]
+        action: replace
+        target_label: kubernetes_name
+
+---
+# Prometheus Rules for AI Nutritionist
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-nutritionist-prometheus-rules
+  namespace: istio-system
+data:
+  ai-nutritionist.yml: |
+    groups:
+    - name: ai-nutritionist.istio
+      rules:
+      # Service-level SLIs
+      - record: ai_nutritionist:request_rate
+        expr: |
+          sum(rate(istio_requests_total{destination_service_namespace="ai-nutritionist"}[1m])) by (destination_service_name)
+      
+      - record: ai_nutritionist:error_rate
+        expr: |
+          sum(rate(istio_requests_total{destination_service_namespace="ai-nutritionist",response_code!~"2.."}[1m])) by (destination_service_name) /
+          sum(rate(istio_requests_total{destination_service_namespace="ai-nutritionist"}[1m])) by (destination_service_name)
+      
+      - record: ai_nutritionist:p99_latency
+        expr: |
+          histogram_quantile(0.99, sum(rate(istio_request_duration_milliseconds_bucket{destination_service_namespace="ai-nutritionist"}[1m])) by (destination_service_name, le))
+      
+      - record: ai_nutritionist:p95_latency
+        expr: |
+          histogram_quantile(0.95, sum(rate(istio_request_duration_milliseconds_bucket{destination_service_namespace="ai-nutritionist"}[1m])) by (destination_service_name, le))
+      
+      - record: ai_nutritionist:p50_latency
+        expr: |
+          histogram_quantile(0.50, sum(rate(istio_request_duration_milliseconds_bucket{destination_service_namespace="ai-nutritionist"}[1m])) by (destination_service_name, le))
+      
+      # Business metrics
+      - record: ai_nutritionist:active_users
+        expr: |
+          count by (destination_service_name) (
+            count by (destination_service_name, user_id) (
+              rate(istio_requests_total{destination_service_namespace="ai-nutritionist",user_id!=""}[5m]) > 0
+            )
+          )
+      
+      - record: ai_nutritionist:premium_user_requests
+        expr: |
+          sum(rate(istio_requests_total{destination_service_namespace="ai-nutritionist",user_tier="premium"}[1m])) by (destination_service_name)
+      
+      - record: ai_nutritionist:canary_error_rate
+        expr: |
+          sum(rate(istio_requests_total{destination_service_namespace="ai-nutritionist",destination_version="canary",response_code!~"2.."}[1m])) by (destination_service_name) /
+          sum(rate(istio_requests_total{destination_service_namespace="ai-nutritionist",destination_version="canary"}[1m])) by (destination_service_name)
+      
+      # Circuit breaker metrics
+      - record: ai_nutritionist:circuit_breaker_open
+        expr: |
+          envoy_cluster_upstream_rq_pending_overflow_total{cluster_name=~"outbound.*ai-nutritionist.*"}
+      
+      - record: ai_nutritionist:circuit_breaker_ejected_hosts
+        expr: |
+          envoy_cluster_outlier_detection_ejections_active{cluster_name=~"outbound.*ai-nutritionist.*"}
+    
+    - name: ai-nutritionist.alerts
+      rules:
+      # High error rate alert
+      - alert: HighErrorRate
+        expr: ai_nutritionist:error_rate > 0.05
+        for: 5m
+        labels:
+          severity: critical
+          service: "{{ $labels.destination_service_name }}"
+        annotations:
+          summary: "High error rate detected"
+          description: "Service {{ $labels.destination_service_name }} has error rate of {{ $value | humanizePercentage }}"
+      
+      # High latency alert
+      - alert: HighLatency
+        expr: ai_nutritionist:p99_latency > 5000
+        for: 5m
+        labels:
+          severity: warning
+          service: "{{ $labels.destination_service_name }}"
+        annotations:
+          summary: "High latency detected"
+          description: "Service {{ $labels.destination_service_name }} P99 latency is {{ $value }}ms"
+      
+      # Low request rate (possible service down)
+      - alert: LowRequestRate
+        expr: ai_nutritionist:request_rate < 0.1
+        for: 10m
+        labels:
+          severity: critical
+          service: "{{ $labels.destination_service_name }}"
+        annotations:
+          summary: "Service receiving very low traffic"
+          description: "Service {{ $labels.destination_service_name }} is receiving {{ $value }} requests/sec"
+      
+      # Canary deployment issues
+      - alert: CanaryHighErrorRate
+        expr: ai_nutritionist:canary_error_rate > 0.1
+        for: 2m
+        labels:
+          severity: critical
+          deployment: canary
+          service: "{{ $labels.destination_service_name }}"
+        annotations:
+          summary: "Canary deployment has high error rate"
+          description: "Canary version of {{ $labels.destination_service_name }} has {{ $value | humanizePercentage }} error rate"
+      
+      # Circuit breaker alerts
+      - alert: CircuitBreakerOpen
+        expr: increase(ai_nutritionist:circuit_breaker_open[5m]) > 10
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Circuit breaker triggered"
+          description: "Circuit breaker has been triggered {{ $value }} times in the last 5 minutes"
+
+---
+# Jaeger Configuration for Distributed Tracing
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jaeger-configuration
+  namespace: istio-system
+data:
+  jaeger.yaml: |
+    apiVersion: jaegertracing.io/v1
+    kind: Jaeger
+    metadata:
+      name: ai-nutritionist-jaeger
+      namespace: istio-system
+    spec:
+      strategy: production
+      storage:
+        type: elasticsearch
+        elasticsearch:
+          nodeCount: 3
+          redundancyPolicy: SingleRedundancy
+          resources:
+            requests:
+              cpu: 200m
+              memory: 1Gi
+            limits:
+              cpu: 1000m
+              memory: 2Gi
+        esIndexCleaner:
+          enabled: true
+          numberOfDays: 7
+          schedule: "55 23 * * *"
+      collector:
+        maxReplicas: 5
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+      query:
+        replicas: 2
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 500m
+            memory: 512Mi
+      ingress:
+        enabled: true
+        annotations:
+          kubernetes.io/ingress.class: istio
+        hosts:
+        - jaeger.ai-nutritionist.com
+
+---
+# Grafana Dashboard Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-nutritionist-grafana-dashboards
+  namespace: istio-system
+data:
+  ai-nutritionist-overview.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "AI Nutritionist Service Mesh Overview",
+        "tags": ["istio", "ai-nutritionist"],
+        "style": "dark",
+        "timezone": "browser",
+        "panels": [
+          {
+            "id": 1,
+            "title": "Request Rate by Service",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "ai_nutritionist:request_rate",
+                "legendFormat": "{{ destination_service_name }}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Requests/sec",
+                "min": 0
+              }
+            ],
+            "gridPos": {
+              "h": 8,
+              "w": 12,
+              "x": 0,
+              "y": 0
+            }
+          },
+          {
+            "id": 2,
+            "title": "Error Rate by Service",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "ai_nutritionist:error_rate",
+                "legendFormat": "{{ destination_service_name }}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Error Rate",
+                "min": 0,
+                "max": 1
+              }
+            ],
+            "gridPos": {
+              "h": 8,
+              "w": 12,
+              "x": 12,
+              "y": 0
+            }
+          },
+          {
+            "id": 3,
+            "title": "Latency Percentiles",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "ai_nutritionist:p99_latency",
+                "legendFormat": "P99 - {{ destination_service_name }}"
+              },
+              {
+                "expr": "ai_nutritionist:p95_latency",
+                "legendFormat": "P95 - {{ destination_service_name }}"
+              },
+              {
+                "expr": "ai_nutritionist:p50_latency",
+                "legendFormat": "P50 - {{ destination_service_name }}"
+              }
+            ],
+            "yAxes": [
+              {
+                "label": "Latency (ms)",
+                "min": 0
+              }
+            ],
+            "gridPos": {
+              "h": 8,
+              "w": 24,
+              "x": 0,
+              "y": 8
+            }
+          },
+          {
+            "id": 4,
+            "title": "Active Users",
+            "type": "singlestat",
+            "targets": [
+              {
+                "expr": "sum(ai_nutritionist:active_users)"
+              }
+            ],
+            "gridPos": {
+              "h": 4,
+              "w": 6,
+              "x": 0,
+              "y": 16
+            }
+          },
+          {
+            "id": 5,
+            "title": "Premium User Requests",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "ai_nutritionist:premium_user_requests",
+                "legendFormat": "{{ destination_service_name }}"
+              }
+            ],
+            "gridPos": {
+              "h": 8,
+              "w": 18,
+              "x": 6,
+              "y": 16
+            }
+          }
+        ],
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "refresh": "30s"
+      }
+    }
+
+---
+# Service Dependency Graph Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: service-graph-config
+  namespace: istio-system
+data:
+  config.yaml: |
+    # Service dependency graph configuration
+    prometheus_url: "http://prometheus:9090"
+    jaeger_url: "http://jaeger-query:16686"
+    
+    # Graph layout configuration
+    layout:
+      algorithm: "force-directed"
+      spacing: 100
+      iterations: 1000
+    
+    # Service grouping
+    groups:
+      - name: "Core Services"
+        services:
+          - "nutrition-service"
+          - "ai-coach-service" 
+          - "health-tracking-service"
+        color: "#1f77b4"
+      
+      - name: "Infrastructure Services"
+        services:
+          - "messaging-service"
+          - "payment-service"
+        color: "#ff7f0e"
+      
+      - name: "Frontend"
+        services:
+          - "web-app"
+          - "mobile-api"
+        color: "#2ca02c"
+    
+    # Edge styling based on traffic volume
+    edge_styles:
+      - threshold: 100
+        width: 1
+        color: "#cccccc"
+      - threshold: 1000
+        width: 2
+        color: "#999999"
+      - threshold: 10000
+        width: 3
+        color: "#666666"
+
+---
+# Performance Monitoring Dashboard
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: performance-monitoring-config
+  namespace: istio-system
+data:
+  performance-dashboard.json: |
+    {
+      "dashboard": {
+        "title": "AI Nutritionist Performance Monitoring",
+        "panels": [
+          {
+            "id": 1,
+            "title": "Circuit Breaker Status",
+            "type": "stat",
+            "targets": [
+              {
+                "expr": "ai_nutritionist:circuit_breaker_open",
+                "legendFormat": "Circuit Breaker Trips"
+              }
+            ]
+          },
+          {
+            "id": 2,
+            "title": "Connection Pool Usage",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "envoy_cluster_upstream_cx_active",
+                "legendFormat": "Active Connections - {{ cluster_name }}"
+              }
+            ]
+          },
+          {
+            "id": 3,
+            "title": "Retry Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(envoy_cluster_upstream_rq_retry_total[1m])",
+                "legendFormat": "Retries/sec - {{ cluster_name }}"
+              }
+            ]
+          },
+          {
+            "id": 4,
+            "title": "Request Queue Depth",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "envoy_cluster_upstream_rq_pending_active",
+                "legendFormat": "Pending Requests - {{ cluster_name }}"
+              }
+            ]
+          },
+          {
+            "id": 5,
+            "title": "Outlier Detection",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "envoy_cluster_outlier_detection_ejections_active",
+                "legendFormat": "Ejected Hosts - {{ cluster_name }}"
+              }
+            ]
+          }
+        ]
+      }
+    }
+
+---
+# Custom Metrics for Business Logic
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: business-metrics
+  namespace: ai-nutritionist
+spec:
+  metrics:
+  - providers:
+    - name: prometheus
+  - overrides:
+    - match:
+        metric: requests_total
+        mode: CLIENT
+      tagOverrides:
+        nutrition_plan_type:
+          value: "%REQ(x-nutrition-plan-type)%"
+        ai_model_version:
+          value: "%REQ(x-ai-model-version)%"
+        subscription_tier:
+          value: "%REQ(x-subscription-tier)%"
+        feature_flags:
+          value: "%REQ(x-feature-flags)%"
+    - match:
+        metric: request_duration_milliseconds
+        mode: CLIENT
+      tagOverrides:
+        processing_complexity:
+          value: "%REQ(x-processing-complexity)%"
+        cache_hit:
+          value: "%RESP(x-cache-hit)%"
+
+---
+# Alertmanager Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alertmanager-config
+  namespace: istio-system
+data:
+  alertmanager.yml: |
+    global:
+      smtp_smarthost: 'smtp.gmail.com:587'
+      smtp_from: 'alerts@ai-nutritionist.com'
+    
+    route:
+      group_by: ['alertname', 'service']
+      group_wait: 10s
+      group_interval: 10s
+      repeat_interval: 1h
+      receiver: 'web.hook'
+      routes:
+      - match:
+          severity: critical
+        receiver: 'critical-alerts'
+        continue: true
+      - match:
+          deployment: canary
+        receiver: 'canary-alerts'
+    
+    receivers:
+    - name: 'web.hook'
+      webhook_configs:
+      - url: 'http://slack-webhook-service/webhook'
+    
+    - name: 'critical-alerts'
+      email_configs:
+      - to: 'ops-team@ai-nutritionist.com'
+        subject: 'CRITICAL: {{ .GroupLabels.alertname }}'
+        body: |
+          Alert: {{ .GroupLabels.alertname }}
+          Service: {{ .GroupLabels.service }}
+          Description: {{ range .Alerts }}{{ .Annotations.description }}{{ end }}
+      pagerduty_configs:
+      - service_key: 'YOUR_PAGERDUTY_SERVICE_KEY'
+    
+    - name: 'canary-alerts'
+      slack_configs:
+      - api_url: 'YOUR_SLACK_WEBHOOK_URL'
+        channel: '#deployment-alerts'
+        title: 'Canary Deployment Issue'
+        text: 'Canary deployment for {{ .GroupLabels.service }} is experiencing issues'
+
+---
+# OpenTelemetry Collector Configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: otel-collector-config
+  namespace: istio-system
+data:
+  config.yaml: |
+    receivers:
+      otlp:
+        protocols:
+          grpc:
+            endpoint: 0.0.0.0:4317
+          http:
+            endpoint: 0.0.0.0:4318
+      
+      prometheus:
+        config:
+          scrape_configs:
+          - job_name: 'istio-envoy'
+            kubernetes_sd_configs:
+            - role: endpoints
+            relabel_configs:
+            - source_labels: [__meta_kubernetes_service_name]
+              action: keep
+              regex: 'istio-proxy'
+    
+    processors:
+      batch:
+        timeout: 1s
+        send_batch_size: 1024
+      
+      memory_limiter:
+        limit_mib: 512
+      
+      resource:
+        attributes:
+        - key: service.name
+          from_attribute: service_name
+          action: upsert
+        - key: service.version
+          from_attribute: service_version
+          action: upsert
+    
+    exporters:
+      prometheus:
+        endpoint: "0.0.0.0:8889"
+      
+      jaeger:
+        endpoint: jaeger-collector:14250
+        tls:
+          insecure: true
+      
+      logging:
+        loglevel: debug
+    
+    service:
+      pipelines:
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [jaeger, logging]
+        
+        metrics:
+          receivers: [otlp, prometheus]
+          processors: [memory_limiter, batch, resource]
+          exporters: [prometheus, logging]

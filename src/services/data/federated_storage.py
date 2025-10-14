@@ -6,8 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from src.models.user import UserProfile
-
+from packages.core.src.entities.user import UserProfile
 
 @dataclass
 class StorageConnector:

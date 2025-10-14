@@ -1,0 +1,27 @@
+{
+  "title": "Perfil y facturación",
+  "description": "Administra derechos, preferencias y soporte.",
+  "subscription": {
+    "title": "Suscripción",
+    "plan": "Plan",
+    "renews": "Renueva el",
+    "tokens": "Tokens restantes",
+    "manage": "Gestionar suscripción"
+  },
+  "language": {
+    "title": "Idioma",
+    "description": "Cambia de idioma sin reiniciar la app."
+  },
+  "notifications": {
+    "title": "Notificaciones",
+    "description": "Elige cómo y cuándo enviamos recordatorios."
+  },
+  "beta": {
+    "title": "Funciones experimentales",
+    "description": "Prueba funciones nuevas antes del lanzamiento."
+  },
+  "appearance": {
+    "title": "Apariencia",
+    "system": "Usar tema del sistema"
+  }
+}

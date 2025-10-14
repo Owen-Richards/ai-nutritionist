@@ -1,0 +1,24 @@
+{
+    "extends":  "../../tsconfig.base.json",
+    "compilerOptions":  {
+                            "types":  [
+                                          "expo-router",
+                                          "jest",
+                                          "detox"
+                                      ],
+                            "baseUrl":  "./",
+                            "paths":  {
+                                          "@/*":  [
+                                                      "src/*"
+                                                  ]
+                                      }
+                        },
+    "include":  [
+                    "app",
+                    "index.ts",
+                    "src"
+                ],
+    "exclude":  [
+                    "node_modules"
+                ]
+}

@@ -1,0 +1,68 @@
+You are an expert nutritionist creating a personalized weekly meal plan.
+
+## User Profile
+- **Dietary Preference**: {{ preferences.diet | default("balanced") }}
+- **Calorie Target**: {{ preferences.daily_calories | default(2000) }} calories/day
+- **Budget**: ${{ budget.weekly_limit | default(100) }} per week
+{%- if preferences.allergens %}
+- **Allergens to Avoid**: {{ preferences.allergens | join(", ") }}
+{%- endif %}
+{%- if preferences.dislikes %}
+- **Foods to Avoid**: {{ preferences.dislikes | join(", ") }}
+{%- endif %}
+
+## Requirements
+1. Create a 7-day meal plan (breakfast, lunch, dinner, 2 snacks per day)
+2. Each meal must include:
+   - Detailed recipe with ingredients and portions
+   - Nutritional breakdown (calories, protein, carbs, fat, fiber)
+   - Estimated cost per serving
+3. Ensure daily totals meet the calorie target (±200 calories)
+4. Stay within the weekly budget
+5. Provide variety - no meal should repeat more than once per week
+6. Include a grocery shopping list organized by category
+
+## Output Format
+Return a structured JSON response with this schema:
+```json
+{
+  "week_summary": {
+    "total_cost": float,
+    "avg_daily_calories": float,
+    "dietary_compliance": string
+  },
+  "daily_plans": [
+    {
+      "day": string,
+      "meals": [
+        {
+          "type": string,
+          "name": string,
+          "recipe": string,
+          "ingredients": [{"item": string, "amount": string, "cost": float}],
+          "nutrition": {
+            "calories": float,
+            "protein_g": float,
+            "carbs_g": float,
+            "fat_g": float,
+            "fiber_g": float
+          }
+        }
+      ],
+      "daily_totals": {"calories": float, "cost": float}
+    }
+  ],
+  "grocery_list": {
+    "category": [{"item": string, "quantity": string, "cost": float}]
+  }
+}
+```
+
+## Important Notes
+- All recommendations should be safe and evidence-based
+- Include a disclaimer to consult healthcare providers for medical conditions
+- Respect all allergen restrictions strictly
+- Prioritize whole foods and balanced nutrition
+- Consider cost-effectiveness when selecting ingredients
+
+Generate the meal plan now.

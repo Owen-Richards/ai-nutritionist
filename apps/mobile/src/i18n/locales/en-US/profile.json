@@ -1,0 +1,27 @@
+{
+  "title": "Profile & billing",
+  "description": "Manage entitlements, preferences, and support.",
+  "subscription": {
+    "title": "Subscription",
+    "plan": "Plan",
+    "renews": "Renews on",
+    "tokens": "Tokens remaining",
+    "manage": "Manage subscription"
+  },
+  "language": {
+    "title": "Language",
+    "description": "Switch languages without restarting the app."
+  },
+  "notifications": {
+    "title": "Notifications",
+    "description": "Choose how and when we send reminders."
+  },
+  "beta": {
+    "title": "Experimental features",
+    "description": "Try new features before they ship broadly."
+  },
+  "appearance": {
+    "title": "Appearance",
+    "system": "Match system theme"
+  }
+}

@@ -14,7 +14,8 @@ import hmac
 import base64
 import random
 from datetime import datetime
-from typing import Dict, Any, Optional
+from uuid import uuid4
+from typing import Dict, Any, Optional, List
 from urllib.parse import quote, unquote_plus
 
 import boto3
@@ -29,8 +30,9 @@ from services.nutrition.tracker import NutritionTracker
 from services.personalization.preferences import UserPreferencesService
 from services.personalization.goals import HealthGoalsService
 from services.meal_planning.planner import MealPlanningService
+from services.orchestration.next_best_action import NextBestActionService
 from services.messaging.sms import SMSCommunicationService
-from services.messaging.templates import MessageTemplatesService
+from services.messaging.templates import MessageTemplatesService, NutritionMessagingService
 from services.messaging.notifications import NotificationManagementService
 from services.business.subscription import SubscriptionService
 from services.infrastructure.agent import ReasoningAgent
@@ -48,19 +50,22 @@ ssm = get_aws_service('ssm')
 user_preferences_service = UserPreferencesService(dynamodb)
 nutrition_insights_service = NutritionInsights()
 nutrition_tracker_service = NutritionTracker()
+nutrition_messaging_service = NutritionMessagingService(nutrition_tracker_service)
 health_goals_service = HealthGoalsService()
 meal_planning_service = MealPlanningService(dynamodb, nutrition_insights_service)
 sms_communication_service = SMSCommunicationService()
-message_templates_service = MessageTemplatesService()
+message_templates_service = MessageTemplatesService(base=nutrition_messaging_service)
 notification_management_service = NotificationManagementService()
 analytics_service = AnalyticsService()
+next_best_action_service = NextBestActionService()
+
+UNIFIED_ORCHESTRATION_ENABLED = os.getenv("ENABLE_UNIFIED_ORCHESTRATION", "true").lower() not in {"0", "false", "off"}
 subscription_service = SubscriptionService()
 reasoning_agent = ReasoningAgent()
 
 # Compatibility aliases for existing code
 user_service = user_preferences_service
 messaging_service = sms_communication_service
-nutrition_messaging_service = message_templates_service
 consolidated_ai_service = nutrition_insights_service
 meal_plan_service = meal_planning_service
 multi_user_handler = notification_management_service
@@ -117,6 +122,128 @@ async def lambda_handler(event: Dict[str, Any], context) -> Dict[str, Any]:
         return utils.create_response(500, {'error': 'Internal server error'})
 
 
+async def maybe_orchestrate_next_best_action(
+    message_data: Dict[str, Any],
+    platform: str,
+    user_profile: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    if not UNIFIED_ORCHESTRATION_ENABLED:
+        return None
+
+    locale = (message_data.get("locale") or user_profile.get("locale") or "en-US")
+    timezone = (
+        user_profile.get("timezone")
+        or message_data.get("timezone")
+        or os.getenv("DEFAULT_USER_TIMEZONE", "UTC")
+    )
+    tokens = len((message_data.get("message") or "").split())
+
+    recent_actions: List[Dict[str, Any]] = list(message_data.get("recent_actions") or ())
+    recent_actions.insert(
+        0,
+        {
+            "id": message_data.get("message_id") or str(uuid4()),
+            "type": "user_message",
+            "timestamp": datetime.utcnow().isoformat(),
+            "channel": platform,
+            "tokens": tokens,
+        },
+    )
+
+    quiet_hours = message_data.get("quiet_hours") or user_profile.get("quiet_hours")
+
+    plan_day_value = user_profile.get("plan_day")
+    if plan_day_value is None:
+        plan_day_value = message_data.get("plan_day")
+    try:
+        plan_day_value = int(plan_day_value) if plan_day_value is not None else None
+    except (TypeError, ValueError):
+        plan_day_value = None
+
+    streak_value = (
+        user_profile.get("streak")
+        or user_profile.get("current_streak")
+        or message_data.get("streak")
+        or 0
+    )
+    try:
+        streak_value = int(streak_value)
+    except (TypeError, ValueError):
+        streak_value = 0
+
+    payload = {
+        "user_id": message_data.get("user_id"),
+        "channel": platform,
+        "locale": locale,
+        "timezone": timezone,
+        "user_name": user_profile.get("name") or user_profile.get("first_name"),
+        "diet": user_profile.get("diet"),
+        "allergies": tuple(user_profile.get("allergies") or ()),
+        "goal": user_profile.get("primary_goal"),
+        "plan_day": plan_day_value,
+        "streak": streak_value,
+        "tokens": tokens,
+        "quiet_hours": quiet_hours,
+        "recent_actions": tuple(recent_actions),
+        "cost_flags": user_profile.get("cost_flags") or {},
+        "plan_status": user_profile.get("plan_status") or {},
+        "channel_preferences": tuple(user_profile.get("preferred_channels") or ()),
+        "feature_flags": {
+            "unified_orchestration": UNIFIED_ORCHESTRATION_ENABLED,
+            "force_refresh": bool(message_data.get("force_nba_refresh")),
+        },
+        "initiated_by_user": True,
+        "correlation_id": message_data.get("correlation_id")
+        or message_data.get("message_id")
+        or str(uuid4()),
+    }
+
+    try:
+        decision = await next_best_action_service.select_action(payload)
+    except Exception as exc:
+        logger.debug("Unified orchestrator skipped: %s", exc, exc_info=True)
+        return None
+
+    rendered = message_templates_service.render_next_best_action(
+        decision,
+        channel=platform,
+        locale=locale,
+        timezone=timezone,
+    )
+    text = rendered.get("text") or decision.get("primary_message") or ""
+
+    if rendered.get("metadata", {}).get("should_queue"):
+        text = f"{text}\nQueued; will sync".strip()
+
+    try:
+        asyncio.create_task(
+            analytics_service.track_message_ingested(
+                user_id=payload["user_id"],
+                platform=f"{platform}_nba"[:32],
+                token_count=decision.get("metadata", {}).get("tokens", tokens),
+                context=analytics_service.build_enriched_context(
+                    metadata={
+                        "journey": decision.get("journey"),
+                        "channel": platform,
+                        "locale": locale,
+                        "release": decision.get("metadata", {})
+                        .get("analytics_tags", {})
+                        .get("release"),
+                    }
+                ),
+            )
+        )
+    except Exception as exc:  # pragma: no cover - analytics best effort
+        logger.debug("Failed to queue orchestration analytics: %s", exc)
+
+    return {
+        "text": text,
+        "decision": decision,
+        "rendered": rendered,
+        "payload": payload,
+    }
+
+
 async def process_universal_message_async(message_data: Dict[str, Any], platform: str) -> str:
     """
     Process message from any platform with nutrition tracking integration
@@ -140,6 +267,11 @@ async def process_universal_message_async(message_data: Dict[str, Any], platform
         
         # Update interaction count and last seen
         user_service.update_user_interaction(user_id)
+        
+        orchestrated = await maybe_orchestrate_next_best_action(message_data, platform, user_profile)
+        if orchestrated:
+            message_data["orchestration"] = orchestrated
+            return orchestrated["text"]
         
         # FIRST: Check for nutrition tracking patterns (most common usage)
         nutrition_response = nutrition_messaging_service.generate_contextual_response(user_message, user_id)

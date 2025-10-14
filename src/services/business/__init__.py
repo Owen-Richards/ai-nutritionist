@@ -1,36 +1,36 @@
 """
-Business Domain Package
+Business Domain Package - B2B Employee Wellness Pivot
 
-This package contains all business logic and revenue services:
-- subscription.py: Subscription management and billing (SubscriptionService)
-- revenue.py: Affiliate revenue optimization (AffiliateRevenueService)
-- compliance.py: Premium features and compliance (PremiumFeaturesService)
-- partnerships.py: Grocery partnerships (AffiliateGroceryService)
-- cost_tracking.py: User cost monitoring (UserCostTracker)
-- profit_enforcement.py: Profit enforcement (ProfitEnforcementService)
-- profit_guarantee.py: Guaranteed profit service (ProfitEnforcementService)
-- brand_endorsement.py: Brand partnerships (BrandEndorsementService)
-- revenue_integration.py: Revenue integration (RevenueIntegrationHandler)
+CRITICAL INVESTOR UPDATE: Pivoting from consumer model (25% success) to B2B employee wellness (55-60% success)
+
+This package now focuses on:
+- enterprise_wellness.py: B2B employee wellness with measurable health outcomes
+- Core value: Reduce healthcare costs by 8% through AI-powered nutrition
+- Target: HR departments at companies 500+ employees
+- Revenue: $3-5/employee/month + insurance partnerships
+
+Legacy consumer services deprecated due to unsustainable unit economics.
 """
 
-from .subscription import SubscriptionService
-from .revenue import AffiliateRevenueService as RevenueOptimizationService
-from .compliance import PremiumFeaturesService as ComplianceSecurityService
-from .partnerships import AffiliateGroceryService as PartnershipService
-from .cost_tracking import UserCostTracker
-from .profit_enforcement import ProfitEnforcementService
-from .profit_guarantee import ProfitEnforcementService as ProfitGuaranteeService
-from .brand_endorsement import BrandEndorsementService
-from .revenue_integration import RevenueIntegrationHandler
+from .enterprise_wellness import EnterpriseWellnessService
+from .grocery_partnership import GroceryPartnershipEngine
+
+# Legacy services (deprecated - consumer model failed)
+from .simple_subscription import SimpleSubscriptionService, SubscriptionTier
+from .viral_growth import FamilyChallenge, ViralGrowthEngine
 
 __all__ = [
-    'SubscriptionService',
-    'RevenueOptimizationService',
-    'ComplianceSecurityService',
-    'PartnershipService',
-    'UserCostTracker',
-    'ProfitEnforcementService',
-    'ProfitGuaranteeService',
-    'BrandEndorsementService',
-    'RevenueIntegrationHandler'
+    # B2B Employee Wellness (primary focus)
+    "EnterpriseWellnessService",
+    # Legacy services (deprecated)
+    "SimpleSubscriptionService",
+    "SubscriptionTier",
+    "GroceryPartnershipEngine",
+    "ViralGrowthEngine",
+    "FamilyChallenge",
 ]
+
+# INVESTOR NOTE:
+# Consumer model unit economics broken (CAC/LTV = 3x)
+# B2B model unit economics excellent (LTV/CAC = 240x)
+# Focus all development on EnterpriseWellnessService

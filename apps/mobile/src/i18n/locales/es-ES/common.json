@@ -1,0 +1,75 @@
+{
+  "appName": "Nutricionista IA",
+  "navigation": {
+    "today": "Hoy",
+    "plans": "Planes",
+    "groceries": "Compras",
+    "track": "Registro",
+    "profile": "Perfil"
+  },
+  "actions": {
+    "viewPlan": "Ver plan semanal",
+    "reviewGroceries": "Revisar compras",
+    "logMeal": "Registrar comida",
+    "retry": "Reintentar",
+    "dismiss": "Cerrar",
+    "sendToRetailer": "Enviar al comercio",
+    "shareList": "Compartir lista",
+    "submit": "Enviar",
+    "cancel": "Cancelar",
+    "changeLanguage": "Cambiar idioma",
+    "switchLocale": "Cambiar a {{locale}}",
+    "enableNotifications": "Activar notificaciones",
+    "openSettings": "Abrir ajustes",
+    "signIn": "Iniciar sesión",
+    "signOut": "Cerrar sesión"
+  },
+  "states": {
+    "loading": "Cargando…",
+    "fetching": "Actualizando…",
+    "empty": "Nada para mostrar todavía",
+    "error": "Ocurrió un problema",
+    "offline": "Estás sin conexión. Sincronizaremos al reconectar.",
+    "online": "Conexión recuperada. Sincronizando…",
+    "queued": "En cola sin conexión"
+  },
+  "labels": {
+    "tokensRemaining": "Tokens restantes",
+    "planRenews": "Renueva {{date, date}}",
+    "language": "Idioma",
+    "appearance": "Apariencia",
+    "notifications": "Notificaciones",
+    "betaFeatures": "Funciones beta"
+  },
+  "notifications": {
+    "prePromptTitle": "Mantente al día",
+    "prePromptBody": "Activa recordatorios para comidas, compras y avances.",
+    "allow": "Permitir notificaciones",
+    "notNow": "Ahora no"
+  },
+  "errors": {
+    "offline": "Ahora mismo estás sin conexión.",
+    "planUnavailable": "El plan de hoy aún no está listo.",
+    "groceryUnavailable": "La lista de compras no está disponible.",
+    "logFailed": "No pudimos guardar tu registro.",
+    "generic": "Ocurrió un problema."
+  },
+  "offlineBanner": {
+    "title": "Modo sin conexión",
+    "message": "Tus acciones se guardarán y se enviarán después."
+  },
+  "dateFormats": {
+    "short": {
+      "month": "short",
+      "day": "numeric"
+    },
+    "weekday": {
+      "weekday": "short"
+    },
+    "full": {
+      "day": "numeric",
+      "month": "long",
+      "year": "numeric"
+    }
+  }
+}

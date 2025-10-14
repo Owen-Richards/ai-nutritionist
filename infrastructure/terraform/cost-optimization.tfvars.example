@@ -1,0 +1,131 @@
+# ===== COST OPTIMIZATION CONFIGURATION TEMPLATE =====
+# Copy this file to cost-optimization.tfvars and customize for your environment
+
+# Budget Configuration
+monthly_budget_limit             = 150
+lambda_monthly_gb_seconds_limit  = 2000
+
+# Cost Thresholds (USD per day)
+lambda_daily_cost_threshold      = 15
+dynamodb_daily_cost_threshold    = 20
+api_gateway_daily_cost_threshold = 8
+
+# Contact Information
+owner_email = "admin@ai-nutritionist.com"
+
+# Cost Allocation Tags
+cost_center    = "AI-Nutritionist-Production"
+billing_group  = "Production-Apps"
+
+# Automation Settings
+enable_auto_scaling          = true
+enable_automated_cleanup     = true
+enable_cost_anomaly_detection = true
+
+# Reserved Capacity (for predictable workloads)
+enable_lambda_provisioned_concurrency = false
+lambda_provisioned_concurrency_limit  = 10
+
+# DynamoDB Auto-Scaling Configuration
+dynamodb_enable_auto_scaling = true
+dynamodb_min_read_capacity   = 2
+dynamodb_max_read_capacity   = 200
+dynamodb_min_write_capacity  = 2
+dynamodb_max_write_capacity  = 200
+dynamodb_target_utilization  = 70
+
+# CloudFront Cost Optimization
+cloudfront_price_class        = "PriceClass_100"  # North America and Europe only
+cloudfront_cache_ttl_default  = 86400             # 24 hours
+cloudfront_cache_ttl_max      = 2592000           # 30 days
+
+# S3 Lifecycle Management
+s3_storage_class_transition_days = 30   # Move to IA after 30 days
+s3_glacier_transition_days       = 90   # Move to Glacier after 90 days
+s3_deep_archive_transition_days  = 365  # Move to Deep Archive after 1 year
+
+# API Gateway Caching
+api_gateway_caching_enabled     = true
+api_gateway_cache_cluster_size  = "1.6"  # GB cache size
+api_gateway_cache_ttl           = 300     # 5 minutes
+
+# Monitoring Cost Optimization
+cloudwatch_log_retention_days = 30
+enable_detailed_monitoring    = false  # Disable in non-prod to save costs
+
+# Cleanup Configuration
+lambda_version_retention_count      = 3
+unused_resource_cleanup_enabled     = true
+unused_resource_grace_period_days   = 7
+
+# ElastiCache Cost Optimization
+elasticache_node_type = "cache.t3.micro"
+elasticache_num_nodes = 1
+
+# Business Hours Scaling (optional)
+enable_business_hours_scaling = false
+business_hours_start         = "08:00"
+business_hours_end           = "18:00"
+business_days               = ["MON", "TUE", "WED", "THU", "FRI"]
+
+# Notification Settings
+cost_optimization_notification_frequency = 24  # hours
+
+# ===== ENVIRONMENT-SPECIFIC OVERRIDES =====
+
+# Development Environment (lower costs)
+# monthly_budget_limit            = 50
+# lambda_daily_cost_threshold     = 5
+# dynamodb_daily_cost_threshold   = 8
+# enable_automated_cleanup        = true
+# cloudwatch_log_retention_days   = 7
+
+# Staging Environment (moderate costs)
+# monthly_budget_limit            = 100
+# lambda_daily_cost_threshold     = 10
+# dynamodb_daily_cost_threshold   = 15
+# enable_automated_cleanup        = true
+# cloudwatch_log_retention_days   = 14
+
+# Production Environment (optimized for performance and cost)
+# monthly_budget_limit                      = 200
+# lambda_daily_cost_threshold               = 20
+# dynamodb_daily_cost_threshold             = 30
+# enable_lambda_provisioned_concurrency     = true
+# lambda_provisioned_concurrency_limit      = 15
+# api_gateway_cache_cluster_size            = "6.1"
+# cloudwatch_log_retention_days             = 90
+
+# ===== COST OPTIMIZATION STRATEGIES BY WORKLOAD TYPE =====
+
+# High Traffic / Predictable Workload
+# enable_lambda_provisioned_concurrency = true
+# api_gateway_caching_enabled           = true
+# api_gateway_cache_cluster_size        = "6.1"
+# dynamodb_target_utilization           = 80
+
+# Variable / Unpredictable Workload  
+# enable_lambda_provisioned_concurrency = false
+# dynamodb_enable_auto_scaling          = true
+# dynamodb_target_utilization           = 60
+# enable_automated_cleanup              = true
+
+# Development / Testing Workload
+# monthly_budget_limit              = 30
+# cloudwatch_log_retention_days     = 3
+# enable_automated_cleanup          = true
+# unused_resource_grace_period_days = 1
+
+# ===== REGION-SPECIFIC CONSIDERATIONS =====
+
+# US East (N. Virginia) - us-east-1 (lowest costs)
+# cloudfront_price_class = "PriceClass_All"
+
+# US West (Oregon) - us-west-2
+# cloudfront_price_class = "PriceClass_200"
+
+# Europe (Ireland) - eu-west-1
+# cloudfront_price_class = "PriceClass_200"
+
+# Asia Pacific (Singapore) - ap-southeast-1
+# cloudfront_price_class = "PriceClass_All"

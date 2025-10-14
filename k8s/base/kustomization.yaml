@@ -1,0 +1,46 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: ai-nutritionist-base
+
+resources:
+  # Namespace
+  - namespace.yaml
+  
+  # Core Services
+  - nutrition-service/
+  - ai-coach-service/
+  - health-tracking-service/
+  - messaging-service/
+  - payment-service/
+  
+  # Applications
+  - web-app/
+  - whatsapp-bot/
+  - sms-bot/
+  
+  # Infrastructure
+  - redis/
+  
+  # Configuration
+  - configmaps.yaml
+  - secrets.yaml
+  
+  # Networking
+  - ingress.yaml
+  
+  # RBAC
+  - rbac.yaml
+  
+  # Scaling and Policies
+  - scaling-policies.yaml
+
+commonLabels:
+  app.kubernetes.io/name: ai-nutritionist
+  app.kubernetes.io/version: "1.0.0"
+  app.kubernetes.io/managed-by: kustomize
+
+commonAnnotations:
+  app.kubernetes.io/component: microservice
+  app.kubernetes.io/part-of: ai-nutritionist-platform

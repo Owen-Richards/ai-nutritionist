@@ -21,8 +21,7 @@ def _twilio_env(monkeypatch):
 
 
 def test_twilio_send_success(monkeypatch):
-    from src.services.messaging.sms import TwilioMessagingPlatform
-
+    from services.messaging_service.src.application.sms import TwilioMessagingPlatform
     class Resp:
         status_code = 201
         text = "ok"
@@ -42,8 +41,7 @@ def test_twilio_send_success(monkeypatch):
 
 
 def test_twilio_webhook_validation(monkeypatch):
-    from src.services.messaging.sms import TwilioMessagingPlatform
-
+    from services.messaging_service.src.application.sms import TwilioMessagingPlatform
     p = TwilioMessagingPlatform("sms")
     payload = {"From": "+123", "Body": "hi"}
     body = "From=%2B123&Body=hi"  # urlencoded order matches sorted params
@@ -55,8 +53,7 @@ def test_twilio_webhook_validation(monkeypatch):
 
 
 def test_twilio_parse_incoming_message():
-    from src.services.messaging.sms import TwilioMessagingPlatform
-
+    from services.messaging_service.src.application.sms import TwilioMessagingPlatform
     p = TwilioMessagingPlatform("sms")
     payload = {"From": "+1234567890", "Body": "hello"}
     norm = p.parse_incoming_message(payload)

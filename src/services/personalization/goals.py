@@ -125,6 +125,24 @@ class GoalRecommendation:
 
 @dataclass
 class GoalInsights:
+@dataclass
+class StreakState:
+    """Tracks user streak progress for gentle nudges."""
+
+    current: int = 0
+    best: int = 0
+    last_completed: Optional[datetime] = None
+    last_missed: Optional[datetime] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "current": self.current,
+            "best": self.best,
+            "last_completed": self.last_completed.isoformat() if self.last_completed else None,
+            "last_missed": self.last_missed.isoformat() if self.last_missed else None,
+        }
+
+
     """Comprehensive insights about goal progress."""
     user_id: str
     total_goals: int
@@ -158,6 +176,73 @@ class HealthGoalsService:
         self.goals_cache: Dict[str, HealthGoal] = {}
         self.user_goals: Dict[str, List[str]] = defaultdict(list)
         self.progress_cache: Dict[str, List[ProgressEntry]] = defaultdict(list)
+        self._streak_states: Dict[str, StreakState] = {}
+
+    def update_daily_streak(
+        self,
+        user_id: str,
+        *,
+        completed: bool,
+        reference_date: Optional[datetime] = None,
+    ) -> StreakState:
+        reference_date = reference_date or datetime.utcnow()
+        state = self._streak_states.get(user_id, StreakState())
+        today = reference_date.date()
+        last_completed = state.last_completed.date() if state.last_completed else None
+
+        if completed:
+            if last_completed == today:
+                return state
+            if last_completed == today - timedelta(days=1):
+                state.current += 1
+            else:
+                state.current = 1
+            state.last_completed = reference_date
+            if state.current > state.best:
+                state.best = state.current
+        else:
+            if last_completed != today:
+                state.current = 0
+            state.last_missed = reference_date
+
+        self._streak_states[user_id] = state
+        return state
+
+    def get_streak_state(self, user_id: str) -> StreakState:
+        return self._streak_states.get(user_id, StreakState())
+
+    def generate_recovery_message(self, user_id: str, reference_date: Optional[datetime] = None) -> str:
+        state = self._streak_states.get(user_id)
+        if not state or not state.last_missed:
+            return "You're still in the game-pick one gentle win today and I'll log it."
+
+        reference_date = reference_date or datetime.utcnow()
+        days_since = (reference_date.date() - state.last_missed.date()).days
+        if days_since <= 1:
+            return "No stress about yesterday-choose one small win now and we'll keep going together."
+        if days_since == 2:
+            return "Two days away happens. Start with one easy win like a glass of water or a stretch."
+        return f"It's been {days_since} days away-let's restart with the easiest habit you enjoy."
+
+    def celebrate_small_win(self, user_id: str) -> Optional[str]:
+        state = self._streak_states.get(user_id)
+        if not state or state.current <= 0:
+            return None
+
+        milestones = {
+            1: "First win back on the board-nice!",
+            3: "Three-day streak! Momentum looks good-keep it light.",
+            5: "Five wins in a row. That's consistency you can feel.",
+            7: "A whole week of wins! Let's lock in one simple goal for tomorrow.",
+        }
+
+        if state.current in milestones:
+            return milestones[state.current]
+        if state.current > 0 and state.current % 5 == 0:
+            return f"{state.current}-day streak! Celebrate with something that feels restorative."
+        if state.current == state.best and state.current > 1:
+            return "Stacked another win-love the consistency!"
+        return None
 
     def create_health_goal(
         self,
@@ -977,3 +1062,5 @@ class HealthGoalsService:
         reverse_pair = (goal2.goal_type, goal1.goal_type)
         
         return goal_pair in synergies or reverse_pair in synergies
+
+

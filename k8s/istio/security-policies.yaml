@@ -1,0 +1,140 @@
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default
+  namespace: ai-nutritionist
+spec:
+  mtls:
+    mode: STRICT
+
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: ai-nutritionist-authz
+  namespace: ai-nutritionist
+spec:
+  selector:
+    matchLabels:
+      service: nutrition
+  rules:
+  - from:
+    - source:
+        principals: ["cluster.local/ns/ai-nutritionist/sa/ai-nutritionist-service-account"]
+  - to:
+    - operation:
+        methods: ["GET", "POST", "PUT", "DELETE"]
+        paths: ["/api/v1/nutrition/*"]
+  - when:
+    - key: request.headers[authorization]
+      values: ["Bearer *"]
+
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: ai-coach-authz
+  namespace: ai-nutritionist
+spec:
+  selector:
+    matchLabels:
+      service: ai-coach
+  rules:
+  - from:
+    - source:
+        principals: ["cluster.local/ns/ai-nutritionist/sa/ai-nutritionist-service-account"]
+  - to:
+    - operation:
+        methods: ["POST"]
+        paths: ["/api/v1/ai-coach/*"]
+  - when:
+    - key: request.headers[authorization]
+      values: ["Bearer *"]
+    - key: custom.user_tier
+      values: ["premium", "enterprise"]
+
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: payment-service-authz
+  namespace: ai-nutritionist
+spec:
+  selector:
+    matchLabels:
+      service: payment
+  rules:
+  - from:
+    - source:
+        principals: ["cluster.local/ns/ai-nutritionist/sa/ai-nutritionist-service-account"]
+  - to:
+    - operation:
+        methods: ["POST"]
+        paths: ["/api/v1/payments/*"]
+  - when:
+    - key: request.headers[authorization]
+      values: ["Bearer *"]
+    - key: request.headers[x-user-verified]
+      values: ["true"]
+
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-all-default
+  namespace: ai-nutritionist
+spec:
+  {}
+
+---
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-ingress-gateway
+  namespace: ai-nutritionist
+spec:
+  rules:
+  - from:
+    - source:
+        principals: ["cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account"]
+
+---
+apiVersion: telemetry.istio.io/v1alpha1
+kind: Telemetry
+metadata:
+  name: default
+  namespace: ai-nutritionist
+spec:
+  metrics:
+  - providers:
+    - name: prometheus
+  - overrides:
+    - match:
+        metric: ALL_METRICS
+      tagOverrides:
+        request_protocol:
+          value: "unknown"
+    - match:
+        metric: REQUEST_COUNT
+      disabled: false
+    - match:
+        metric: REQUEST_DURATION
+      disabled: false
+    - match:
+        metric: REQUEST_SIZE
+      disabled: false
+    - match:
+        metric: RESPONSE_SIZE
+      disabled: false
+    - match:
+        metric: TCP_OPENED_CONNECTIONS
+      disabled: false
+    - match:
+        metric: TCP_CLOSED_CONNECTIONS
+      disabled: false
+  tracing:
+  - providers:
+    - name: jaeger
+  accessLogging:
+  - providers:
+    - name: otel

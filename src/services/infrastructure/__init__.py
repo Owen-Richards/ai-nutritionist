@@ -1,16 +1,31 @@
 """
-Infrastructure Servic# Track G services
-from .observability import observability, log_info, log_error, trace_operation
-from .distributed_rate_limiting import rate_limiter, check_rate_limit
-from .secrets_manager import secrets_manager, get_secret, store_secret, secret_context
-from .privacy_compliance import privacy_service, record_consent, check_processing_consent, request_data_deletion
-from .incident_management import incident_manager, create_incident, get_runbook, escalate_incidentain
+AI_CONTEXT
+Purpose: Infrastructure services providing cross-cutting concerns for resilience, monitoring, and compliance
+Public API: AIService, CachingService, ErrorRecoveryService, MonitoringService, observability utilities, 
+            rate_limiter, secrets_manager, privacy_service, incident_manager
+Internal: Implementation details in submodules
+Contracts: All services follow dependency injection pattern, async for I/O operations
+Side Effects: AWS API calls (Bedrock, CloudWatch, Secrets Manager), metrics emission, log generation
+Stability: public - maintain backward compatibility for all exported services
+Usage Example:
+    from services.infrastructure import observability, rate_limiter
+    
+    @trace_operation("api_call")
+    @check_rate_limit(max_requests=10, window_seconds=60)
+    async def protected_endpoint(request):
+        logger = observability.get_logger(__name__)
+        logger.info("Processing request", extra={"request_id": request.id})
+        return response
+"""
 
-Technical foundation services that support the entire application:
-- AI/ML capabilities and model integration
-- Caching and performance optimization
-- Error recovery and system resilience
-- Monitoring and observability
+"""
+Infrastructure Services - Technical foundation supporting the entire application
+
+Core Services:
+- AI/ML capabilities and model integration (AWS Bedrock)
+- Caching and performance optimization (multi-level caching)
+- Error recovery and system resilience (circuit breakers, retries)
+- Monitoring and observability (CloudWatch, structured logging)
 - User experience enhancement
 - System dashboard and analytics
 

@@ -1,0 +1,1361 @@
+asyncapi: 3.0.0
+info:
+  title: AI Nutritionist Event API
+  version: 2.0.0
+  description: |
+    Event-driven communication specification for the AI Nutritionist platform.
+    
+    This API defines the asynchronous messaging patterns used for real-time 
+    communication, background processing, and event-driven workflows.
+    
+    ## Event Categories
+    - **User Events**: User registration, profile updates, authentication
+    - **Meal Planning Events**: Plan generation, feedback, modifications
+    - **Community Events**: Crew activities, reflections, social interactions
+    - **Gamification Events**: Progress updates, achievements, challenges
+    - **Analytics Events**: Usage tracking, behavioral insights
+    - **Infrastructure Events**: System monitoring, alerts, compliance
+    - **Integration Events**: Third-party platform sync events
+    - **Billing Events**: Subscription changes, payment processing
+    
+    ## Message Patterns
+    - **Fire-and-forget**: One-way notifications
+    - **Request-reply**: Synchronous-style async operations
+    - **Publish-subscribe**: Event broadcasting to multiple consumers
+    - **Message queuing**: Reliable delivery with acknowledgments
+
+  contact:
+    name: AI Nutritionist API Support
+    url: https://support.ai-nutritionist.com
+    email: api-support@ai-nutritionist.com
+  license:
+    name: Proprietary
+    url: https://ai-nutritionist.com/license
+
+defaultContentType: application/json
+
+servers:
+  production:
+    host: events.ai-nutritionist.com
+    protocol: wss
+    description: Production event server
+    security:
+      - bearerAuth: []
+  staging:
+    host: staging-events.ai-nutritionist.com
+    protocol: wss
+    description: Staging event server
+    security:
+      - bearerAuth: []
+  development:
+    host: dev-events.ai-nutritionist.com
+    protocol: wss
+    description: Development event server
+    security:
+      - bearerAuth: []
+
+channels:
+  # User lifecycle events
+  user/registered:
+    address: user.registered
+    messages:
+      userRegistered:
+        $ref: '#/components/messages/UserRegistered'
+    description: Triggered when a new user registers
+    
+  user/profile-updated:
+    address: user.profile.updated
+    messages:
+      userProfileUpdated:
+        $ref: '#/components/messages/UserProfileUpdated'
+    description: Triggered when user profile is updated
+
+  # Meal planning events
+  plan/generation-requested:
+    address: plan.generation.requested
+    messages:
+      planGenerationRequested:
+        $ref: '#/components/messages/PlanGenerationRequested'
+    description: Request for meal plan generation
+    
+  plan/generated:
+    address: plan.generated
+    messages:
+      planGenerated:
+        $ref: '#/components/messages/PlanGenerated'
+    description: Meal plan generation completed
+    
+  plan/feedback-submitted:
+    address: plan.feedback.submitted
+    messages:
+      planFeedbackSubmitted:
+        $ref: '#/components/messages/PlanFeedbackSubmitted'
+    description: User submitted feedback on meal plan
+
+  # Community events
+  community/crew-joined:
+    address: community.crew.joined
+    messages:
+      crewJoined:
+        $ref: '#/components/messages/CrewJoined'
+    description: User joined a community crew
+    
+  community/reflection-shared:
+    address: community.reflection.shared
+    messages:
+      reflectionShared:
+        $ref: '#/components/messages/ReflectionShared'
+    description: User shared a reflection with community
+
+  # Gamification events
+  gamification/progress-updated:
+    address: gamification.progress.updated
+    messages:
+      progressUpdated:
+        $ref: '#/components/messages/ProgressUpdated'
+    description: User progress metrics updated
+    
+  gamification/achievement-unlocked:
+    address: gamification.achievement.unlocked
+    messages:
+      achievementUnlocked:
+        $ref: '#/components/messages/AchievementUnlocked'
+    description: User unlocked a new achievement
+    
+  gamification/challenge-completed:
+    address: gamification.challenge.completed
+    messages:
+      challengeCompleted:
+        $ref: '#/components/messages/ChallengeCompleted'
+    description: User completed a challenge
+
+  # Analytics events
+  analytics/event-tracked:
+    address: analytics.event.tracked
+    messages:
+      eventTracked:
+        $ref: '#/components/messages/EventTracked'
+    description: Analytics event tracked
+    
+  analytics/insight-generated:
+    address: analytics.insight.generated
+    messages:
+      insightGenerated:
+        $ref: '#/components/messages/InsightGenerated'
+    description: New user insight generated
+
+  # Infrastructure events
+  infrastructure/health-check:
+    address: infrastructure.health.check
+    messages:
+      healthCheckRequest:
+        $ref: '#/components/messages/HealthCheckRequest'
+      healthCheckResponse:
+        $ref: '#/components/messages/HealthCheckResponse'
+    description: System health monitoring
+    
+  infrastructure/alert-triggered:
+    address: infrastructure.alert.triggered
+    messages:
+      alertTriggered:
+        $ref: '#/components/messages/AlertTriggered'
+    description: System alert triggered
+    
+  infrastructure/rate-limit-exceeded:
+    address: infrastructure.rate_limit.exceeded
+    messages:
+      rateLimitExceeded:
+        $ref: '#/components/messages/RateLimitExceeded'
+    description: Rate limit threshold exceeded
+
+  # Integration events
+  integrations/calendar-synced:
+    address: integrations.calendar.synced
+    messages:
+      calendarSynced:
+        $ref: '#/components/messages/CalendarSynced'
+    description: Calendar integration synchronized
+    
+  integrations/fitness-data-received:
+    address: integrations.fitness.data_received
+    messages:
+      fitnessDataReceived:
+        $ref: '#/components/messages/FitnessDataReceived'
+    description: Fitness data received from integration
+
+  # Billing events
+  billing/subscription-created:
+    address: billing.subscription.created
+    messages:
+      subscriptionCreated:
+        $ref: '#/components/messages/SubscriptionCreated'
+    description: New subscription created
+    
+  billing/subscription-updated:
+    address: billing.subscription.updated
+    messages:
+      subscriptionUpdated:
+        $ref: '#/components/messages/SubscriptionUpdated'
+    description: Subscription status updated
+    
+  billing/payment-processed:
+    address: billing.payment.processed
+    messages:
+      paymentProcessed:
+        $ref: '#/components/messages/PaymentProcessed'
+    description: Payment processed successfully
+
+  # Notification channels
+  notifications/push:
+    address: notifications.push
+    messages:
+      pushNotification:
+        $ref: '#/components/messages/PushNotification'
+    description: Push notification delivery
+    
+  notifications/email:
+    address: notifications.email
+    messages:
+      emailNotification:
+        $ref: '#/components/messages/EmailNotification'
+    description: Email notification delivery
+    
+  notifications/sms:
+    address: notifications.sms
+    messages:
+      smsNotification:
+        $ref: '#/components/messages/SmsNotification'
+    description: SMS notification delivery
+
+operations:
+  # User operations
+  onUserRegistered:
+    action: receive
+    channel:
+      $ref: '#/channels/user~1registered'
+    summary: Handle user registration event
+    description: Process new user registration and trigger welcome workflows
+    
+  publishUserProfileUpdate:
+    action: send
+    channel:
+      $ref: '#/channels/user~1profile-updated'
+    summary: Publish user profile update
+    description: Notify systems of user profile changes
+
+  # Meal planning operations
+  requestPlanGeneration:
+    action: send
+    channel:
+      $ref: '#/channels/plan~1generation-requested'
+    summary: Request meal plan generation
+    description: Submit request for AI-powered meal plan generation
+    
+  onPlanGenerated:
+    action: receive
+    channel:
+      $ref: '#/channels/plan~1generated'
+    summary: Handle plan generation completion
+    description: Process completed meal plan and notify user
+    
+  publishPlanFeedback:
+    action: send
+    channel:
+      $ref: '#/channels/plan~1feedback-submitted'
+    summary: Publish plan feedback
+    description: Share user feedback for plan improvement
+
+  # Community operations
+  onCrewJoined:
+    action: receive
+    channel:
+      $ref: '#/channels/community~1crew-joined'
+    summary: Handle crew join event
+    description: Process crew membership and update community metrics
+    
+  publishReflection:
+    action: send
+    channel:
+      $ref: '#/channels/community~1reflection-shared'
+    summary: Publish user reflection
+    description: Share user reflection with community
+
+  # Gamification operations
+  onProgressUpdated:
+    action: receive
+    channel:
+      $ref: '#/channels/gamification~1progress-updated'
+    summary: Handle progress update
+    description: Process user progress and check for achievements
+    
+  publishAchievement:
+    action: send
+    channel:
+      $ref: '#/channels/gamification~1achievement-unlocked'
+    summary: Publish achievement unlock
+    description: Notify user of new achievement
+
+  # Analytics operations
+  trackEvent:
+    action: send
+    channel:
+      $ref: '#/channels/analytics~1event-tracked'
+    summary: Track analytics event
+    description: Record user behavior for insights
+    
+  onInsightGenerated:
+    action: receive
+    channel:
+      $ref: '#/channels/analytics~1insight-generated'
+    summary: Handle generated insight
+    description: Process new insights and trigger actions
+
+  # Infrastructure operations
+  performHealthCheck:
+    action: send
+    channel:
+      $ref: '#/channels/infrastructure~1health-check'
+    summary: Perform health check
+    description: Check system component health
+    
+  onAlertTriggered:
+    action: receive
+    channel:
+      $ref: '#/channels/infrastructure~1alert-triggered'
+    summary: Handle system alert
+    description: Process system alerts and trigger responses
+
+  # Integration operations
+  onCalendarSynced:
+    action: receive
+    channel:
+      $ref: '#/channels/integrations~1calendar-synced'
+    summary: Handle calendar sync
+    description: Process calendar synchronization events
+    
+  onFitnessDataReceived:
+    action: receive
+    channel:
+      $ref: '#/channels/integrations~1fitness-data-received'
+    summary: Handle fitness data
+    description: Process incoming fitness data
+
+  # Billing operations
+  onSubscriptionCreated:
+    action: receive
+    channel:
+      $ref: '#/channels/billing~1subscription-created'
+    summary: Handle subscription creation
+    description: Process new subscription and activate features
+    
+  onPaymentProcessed:
+    action: receive
+    channel:
+      $ref: '#/channels/billing~1payment-processed'
+    summary: Handle payment processing
+    description: Process payment and update account status
+
+  # Notification operations
+  sendPushNotification:
+    action: send
+    channel:
+      $ref: '#/channels/notifications~1push'
+    summary: Send push notification
+    description: Deliver push notification to user device
+    
+  sendEmailNotification:
+    action: send
+    channel:
+      $ref: '#/channels/notifications~1email'
+    summary: Send email notification
+    description: Deliver email notification to user
+    
+  sendSmsNotification:
+    action: send
+    channel:
+      $ref: '#/channels/notifications~1sms'
+    summary: Send SMS notification
+    description: Deliver SMS notification to user
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token for event stream authentication
+
+  messages:
+    # User messages
+    UserRegistered:
+      name: UserRegistered
+      title: User Registration Event
+      summary: New user registered on the platform
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/UserRegisteredPayload'
+      examples:
+        - name: Basic user registration
+          payload:
+            user_id: "user_123456"
+            email: "user@example.com"
+            phone: "+1234567890"
+            registration_source: "mobile_app"
+            subscription_tier: "free"
+            timestamp: "2024-10-13T15:30:00Z"
+
+    UserProfileUpdated:
+      name: UserProfileUpdated
+      title: User Profile Update Event
+      summary: User profile information updated
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/UserProfileUpdatedPayload'
+
+    # Meal planning messages
+    PlanGenerationRequested:
+      name: PlanGenerationRequested
+      title: Plan Generation Request
+      summary: Request for meal plan generation
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/PlanGenerationRequestPayload'
+      examples:
+        - name: Basic plan generation request
+          payload:
+            request_id: "req_abc123"
+            user_id: "user_123456"
+            preferences:
+              dietary_restrictions: ["vegetarian"]
+              budget_per_week: 120.00
+              servings: 4
+            priority: "normal"
+            timestamp: "2024-10-13T15:30:00Z"
+
+    PlanGenerated:
+      name: PlanGenerated
+      title: Plan Generation Complete
+      summary: Meal plan generation completed
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/PlanGeneratedPayload'
+
+    PlanFeedbackSubmitted:
+      name: PlanFeedbackSubmitted
+      title: Plan Feedback Event
+      summary: User submitted feedback on meal plan
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/PlanFeedbackPayload'
+
+    # Community messages
+    CrewJoined:
+      name: CrewJoined
+      title: Crew Join Event
+      summary: User joined a community crew
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/CrewJoinedPayload'
+
+    ReflectionShared:
+      name: ReflectionShared
+      title: Reflection Shared Event
+      summary: User shared a reflection
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/ReflectionSharedPayload'
+
+    # Gamification messages
+    ProgressUpdated:
+      name: ProgressUpdated
+      title: Progress Update Event
+      summary: User progress metrics updated
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/ProgressUpdatedPayload'
+
+    AchievementUnlocked:
+      name: AchievementUnlocked
+      title: Achievement Unlock Event
+      summary: User unlocked a new achievement
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/AchievementUnlockedPayload'
+
+    ChallengeCompleted:
+      name: ChallengeCompleted
+      title: Challenge Completion Event
+      summary: User completed a challenge
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/ChallengeCompletedPayload'
+
+    # Analytics messages
+    EventTracked:
+      name: EventTracked
+      title: Analytics Event
+      summary: User behavior event tracked
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/EventTrackedPayload'
+
+    InsightGenerated:
+      name: InsightGenerated
+      title: Insight Generated Event
+      summary: New user insight generated
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/InsightGeneratedPayload'
+
+    # Infrastructure messages
+    HealthCheckRequest:
+      name: HealthCheckRequest
+      title: Health Check Request
+      summary: Request for system health check
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/HealthCheckRequestPayload'
+
+    HealthCheckResponse:
+      name: HealthCheckResponse
+      title: Health Check Response
+      summary: System health check results
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/HealthCheckResponsePayload'
+
+    AlertTriggered:
+      name: AlertTriggered
+      title: System Alert Event
+      summary: System alert triggered
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/AlertTriggeredPayload'
+
+    RateLimitExceeded:
+      name: RateLimitExceeded
+      title: Rate Limit Exceeded Event
+      summary: Rate limit threshold exceeded
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/RateLimitExceededPayload'
+
+    # Integration messages
+    CalendarSynced:
+      name: CalendarSynced
+      title: Calendar Sync Event
+      summary: Calendar integration synchronized
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/CalendarSyncedPayload'
+
+    FitnessDataReceived:
+      name: FitnessDataReceived
+      title: Fitness Data Event
+      summary: Fitness data received from integration
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/FitnessDataReceivedPayload'
+
+    # Billing messages
+    SubscriptionCreated:
+      name: SubscriptionCreated
+      title: Subscription Created Event
+      summary: New subscription created
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/SubscriptionCreatedPayload'
+
+    SubscriptionUpdated:
+      name: SubscriptionUpdated
+      title: Subscription Updated Event
+      summary: Subscription status updated
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/SubscriptionUpdatedPayload'
+
+    PaymentProcessed:
+      name: PaymentProcessed
+      title: Payment Processed Event
+      summary: Payment processed successfully
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/PaymentProcessedPayload'
+
+    # Notification messages
+    PushNotification:
+      name: PushNotification
+      title: Push Notification Event
+      summary: Push notification delivery
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/PushNotificationPayload'
+
+    EmailNotification:
+      name: EmailNotification
+      title: Email Notification Event
+      summary: Email notification delivery
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/EmailNotificationPayload'
+
+    SmsNotification:
+      name: SmsNotification
+      title: SMS Notification Event
+      summary: SMS notification delivery
+      contentType: application/json
+      payload:
+        $ref: '#/components/schemas/SmsNotificationPayload'
+
+  schemas:
+    # Base event schema
+    BaseEvent:
+      type: object
+      required:
+        - event_id
+        - event_type
+        - timestamp
+        - version
+      properties:
+        event_id:
+          type: string
+          format: uuid
+          description: Unique event identifier
+        event_type:
+          type: string
+          description: Type of event
+        timestamp:
+          type: string
+          format: date-time
+          description: Event timestamp
+        version:
+          type: string
+          description: Event schema version
+          default: "2.0.0"
+        correlation_id:
+          type: string
+          format: uuid
+          description: Correlation identifier for related events
+        source:
+          type: string
+          description: Event source service
+        metadata:
+          type: object
+          additionalProperties: true
+          description: Additional event metadata
+
+    # User event payloads
+    UserRegisteredPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          required:
+            - user_id
+            - registration_source
+          properties:
+            user_id:
+              type: string
+              description: Unique user identifier
+            email:
+              type: string
+              format: email
+              description: User email address
+            phone:
+              type: string
+              description: User phone number
+            registration_source:
+              type: string
+              enum: [web, mobile_app, api, referral]
+              description: Source of registration
+            subscription_tier:
+              type: string
+              enum: [free, premium, enterprise]
+              default: free
+              description: Initial subscription tier
+            referrer_id:
+              type: string
+              description: ID of referring user
+
+    UserProfileUpdatedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          required:
+            - user_id
+            - updated_fields
+          properties:
+            user_id:
+              type: string
+              description: User identifier
+            updated_fields:
+              type: array
+              items:
+                type: string
+              description: List of updated profile fields
+            previous_values:
+              type: object
+              additionalProperties: true
+              description: Previous field values
+            new_values:
+              type: object
+              additionalProperties: true
+              description: New field values
+
+    # Meal planning event payloads
+    PlanGenerationRequestPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          required:
+            - request_id
+            - user_id
+          properties:
+            request_id:
+              type: string
+              description: Unique request identifier
+            user_id:
+              type: string
+              description: User requesting the plan
+            preferences:
+              type: object
+              additionalProperties: true
+              description: User preferences for plan generation
+            priority:
+              type: string
+              enum: [low, normal, high, urgent]
+              default: normal
+              description: Processing priority
+            estimated_duration:
+              type: integer
+              description: Estimated processing time in seconds
+
+    PlanGeneratedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          required:
+            - plan_id
+            - user_id
+            - generation_time_ms
+          properties:
+            plan_id:
+              type: string
+              description: Generated plan identifier
+            user_id:
+              type: string
+              description: User who requested the plan
+            generation_time_ms:
+              type: integer
+              description: Time taken to generate plan in milliseconds
+            meal_count:
+              type: integer
+              description: Number of meals in plan
+            estimated_cost:
+              type: number
+              description: Estimated cost of ingredients
+            success:
+              type: boolean
+              description: Whether generation was successful
+            error_message:
+              type: string
+              description: Error message if generation failed
+
+    PlanFeedbackPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          required:
+            - user_id
+            - plan_id
+            - meal_id
+            - rating
+          properties:
+            user_id:
+              type: string
+              description: User providing feedback
+            plan_id:
+              type: string
+              description: Plan being rated
+            meal_id:
+              type: string
+              description: Specific meal being rated
+            rating:
+              type: integer
+              minimum: 1
+              maximum: 5
+              description: Rating from 1-5
+            comment:
+              type: string
+              description: Optional feedback comment
+            sentiment:
+              type: string
+              enum: [positive, neutral, negative]
+              description: Analyzed sentiment of feedback
+
+    # Community event payloads
+    CrewJoinedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          required:
+            - user_id
+            - crew_id
+            - crew_type
+          properties:
+            user_id:
+              type: string
+              description: User joining the crew
+            crew_id:
+              type: string
+              description: Crew identifier
+            crew_type:
+              type: string
+              enum: [beginner, intermediate, advanced, weight_loss, muscle_gain]
+              description: Type of crew joined
+            member_count:
+              type: integer
+              description: Total crew members after join
+            join_reason:
+              type: string
+              description: Reason for joining crew
+
+    ReflectionSharedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          required:
+            - user_id
+            - reflection_id
+            - reflection_type
+          properties:
+            user_id:
+              type: string
+              description: User sharing reflection
+            reflection_id:
+              type: string
+              description: Reflection identifier
+            reflection_type:
+              type: string
+              enum: [daily, weekly, monthly, milestone]
+              description: Type of reflection
+            content_length:
+              type: integer
+              description: Character count of reflection
+            tags:
+              type: array
+              items:
+                type: string
+              description: Tags associated with reflection
+            mood_score:
+              type: integer
+              minimum: 1
+              maximum: 5
+              description: User's mood rating
+
+    # Gamification event payloads
+    ProgressUpdatedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          required:
+            - user_id
+            - metric_type
+            - new_value
+          properties:
+            user_id:
+              type: string
+              description: User whose progress updated
+            metric_type:
+              type: string
+              enum: [adherence, streak, points, level]
+              description: Type of progress metric
+            new_value:
+              type: number
+              description: New metric value
+            previous_value:
+              type: number
+              description: Previous metric value
+            change_amount:
+              type: number
+              description: Amount of change
+            milestone_reached:
+              type: boolean
+              description: Whether a milestone was reached
+
+    AchievementUnlockedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          required:
+            - user_id
+            - achievement_id
+            - achievement_type
+          properties:
+            user_id:
+              type: string
+              description: User who unlocked achievement
+            achievement_id:
+              type: string
+              description: Achievement identifier
+            achievement_type:
+              type: string
+              enum: [streak, consistency, social, milestone]
+              description: Type of achievement
+            points_awarded:
+              type: integer
+              description: Points awarded for achievement
+            rarity:
+              type: string
+              enum: [common, uncommon, rare, epic, legendary]
+              description: Achievement rarity level
+
+    ChallengeCompletedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          required:
+            - user_id
+            - challenge_id
+            - completion_time
+          properties:
+            user_id:
+              type: string
+              description: User who completed challenge
+            challenge_id:
+              type: string
+              description: Challenge identifier
+            completion_time:
+              type: string
+              format: date-time
+              description: When challenge was completed
+            time_taken:
+              type: integer
+              description: Time taken to complete in seconds
+            points_earned:
+              type: integer
+              description: Points earned from completion
+            difficulty_level:
+              type: integer
+              minimum: 1
+              maximum: 5
+              description: Challenge difficulty
+
+    # Analytics event payloads
+    EventTrackedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          required:
+            - user_id
+            - action
+          properties:
+            user_id:
+              type: string
+              description: User performing action
+            action:
+              type: string
+              description: Action being tracked
+            properties:
+              type: object
+              additionalProperties: true
+              description: Additional event properties
+            session_id:
+              type: string
+              description: User session identifier
+            device_info:
+              type: object
+              description: Device and browser information
+            location:
+              type: object
+              description: Geographic location data
+
+    InsightGeneratedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          required:
+            - insight_id
+            - insight_type
+            - confidence_score
+          properties:
+            insight_id:
+              type: string
+              description: Insight identifier
+            insight_type:
+              type: string
+              enum: [behavioral, nutritional, engagement, churn_risk]
+              description: Type of insight
+            confidence_score:
+              type: number
+              minimum: 0
+              maximum: 1
+              description: Confidence in insight accuracy
+            affected_users:
+              type: array
+              items:
+                type: string
+              description: Users affected by insight
+            recommended_actions:
+              type: array
+              items:
+                type: string
+              description: Recommended actions based on insight
+
+    # Infrastructure event payloads
+    HealthCheckRequestPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          required:
+            - check_type
+            - target_service
+          properties:
+            check_type:
+              type: string
+              enum: [basic, detailed, comprehensive]
+              description: Type of health check
+            target_service:
+              type: string
+              description: Service to check
+            timeout_ms:
+              type: integer
+              description: Check timeout in milliseconds
+
+    HealthCheckResponsePayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          required:
+            - service_name
+            - status
+            - response_time_ms
+          properties:
+            service_name:
+              type: string
+              description: Name of checked service
+            status:
+              type: string
+              enum: [healthy, degraded, unhealthy]
+              description: Service health status
+            response_time_ms:
+              type: integer
+              description: Response time in milliseconds
+            error_details:
+              type: string
+              description: Error details if unhealthy
+            metrics:
+              type: object
+              additionalProperties: true
+              description: Additional health metrics
+
+    AlertTriggeredPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          required:
+            - alert_id
+            - severity
+            - service_name
+          properties:
+            alert_id:
+              type: string
+              description: Alert identifier
+            severity:
+              type: string
+              enum: [info, warning, critical, emergency]
+              description: Alert severity level
+            service_name:
+              type: string
+              description: Affected service
+            description:
+              type: string
+              description: Alert description
+            metrics:
+              type: object
+              additionalProperties: true
+              description: Related metrics data
+            remediation_steps:
+              type: array
+              items:
+                type: string
+              description: Suggested remediation steps
+
+    RateLimitExceededPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          required:
+            - identifier
+            - limit_type
+            - current_count
+            - limit_value
+          properties:
+            identifier:
+              type: string
+              description: Rate limited identifier (user, IP, etc.)
+            limit_type:
+              type: string
+              enum: [api_calls, requests, bandwidth]
+              description: Type of rate limit
+            current_count:
+              type: integer
+              description: Current usage count
+            limit_value:
+              type: integer
+              description: Rate limit threshold
+            window_size:
+              type: integer
+              description: Rate limit window in seconds
+            reset_time:
+              type: string
+              format: date-time
+              description: When limit resets
+
+    # Integration event payloads
+    CalendarSyncedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          required:
+            - user_id
+            - provider
+            - sync_status
+          properties:
+            user_id:
+              type: string
+              description: User with calendar integration
+            provider:
+              type: string
+              enum: [google, outlook, apple]
+              description: Calendar provider
+            sync_status:
+              type: string
+              enum: [success, partial, failed]
+              description: Sync operation status
+            events_synced:
+              type: integer
+              description: Number of events synchronized
+            errors:
+              type: array
+              items:
+                type: string
+              description: Sync errors if any
+
+    FitnessDataReceivedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          required:
+            - user_id
+            - provider
+            - data_types
+          properties:
+            user_id:
+              type: string
+              description: User with fitness integration
+            provider:
+              type: string
+              enum: [fitbit, apple_health, google_fit, strava]
+              description: Fitness data provider
+            data_types:
+              type: array
+              items:
+                type: string
+                enum: [steps, calories, sleep, workouts, heart_rate]
+              description: Types of data received
+            date_range:
+              type: object
+              properties:
+                start_date:
+                  type: string
+                  format: date
+                end_date:
+                  type: string
+                  format: date
+              description: Date range of received data
+
+    # Billing event payloads
+    SubscriptionCreatedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          required:
+            - user_id
+            - subscription_id
+            - tier
+            - billing_cycle
+          properties:
+            user_id:
+              type: string
+              description: User with new subscription
+            subscription_id:
+              type: string
+              description: Subscription identifier
+            tier:
+              type: string
+              enum: [premium, enterprise]
+              description: Subscription tier
+            billing_cycle:
+              type: string
+              enum: [monthly, yearly]
+              description: Billing frequency
+            amount:
+              type: number
+              description: Subscription amount
+            currency:
+              type: string
+              description: Currency code
+            trial_period_days:
+              type: integer
+              description: Trial period length
+
+    SubscriptionUpdatedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          required:
+            - user_id
+            - subscription_id
+            - status
+          properties:
+            user_id:
+              type: string
+              description: User with updated subscription
+            subscription_id:
+              type: string
+              description: Subscription identifier
+            status:
+              type: string
+              enum: [active, cancelled, expired, suspended]
+              description: New subscription status
+            previous_status:
+              type: string
+              description: Previous subscription status
+            reason:
+              type: string
+              description: Reason for status change
+            effective_date:
+              type: string
+              format: date-time
+              description: When change takes effect
+
+    PaymentProcessedPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          required:
+            - user_id
+            - payment_id
+            - amount
+            - status
+          properties:
+            user_id:
+              type: string
+              description: User who made payment
+            payment_id:
+              type: string
+              description: Payment identifier
+            amount:
+              type: number
+              description: Payment amount
+            currency:
+              type: string
+              description: Currency code
+            status:
+              type: string
+              enum: [succeeded, failed, pending, refunded]
+              description: Payment status
+            payment_method:
+              type: string
+              description: Payment method used
+            transaction_id:
+              type: string
+              description: External transaction identifier
+
+    # Notification event payloads
+    PushNotificationPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          required:
+            - user_id
+            - notification_id
+            - title
+            - body
+          properties:
+            user_id:
+              type: string
+              description: Target user
+            notification_id:
+              type: string
+              description: Notification identifier
+            title:
+              type: string
+              description: Notification title
+            body:
+              type: string
+              description: Notification body text
+            badge_count:
+              type: integer
+              description: App badge count
+            deep_link:
+              type: string
+              description: Deep link URL
+            delivery_status:
+              type: string
+              enum: [sent, delivered, failed]
+              description: Delivery status
+
+    EmailNotificationPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          required:
+            - user_id
+            - email_id
+            - subject
+            - template
+          properties:
+            user_id:
+              type: string
+              description: Target user
+            email_id:
+              type: string
+              description: Email identifier
+            subject:
+              type: string
+              description: Email subject
+            template:
+              type: string
+              description: Email template used
+            delivery_status:
+              type: string
+              enum: [sent, delivered, opened, clicked, bounced]
+              description: Email delivery status
+
+    SmsNotificationPayload:
+      allOf:
+        - $ref: '#/components/schemas/BaseEvent'
+        - type: object
+          required:
+            - user_id
+            - sms_id
+            - message
+            - phone_number
+          properties:
+            user_id:
+              type: string
+              description: Target user
+            sms_id:
+              type: string
+              description: SMS identifier
+            message:
+              type: string
+              description: SMS message text
+            phone_number:
+              type: string
+              description: Target phone number
+            delivery_status:
+              type: string
+              enum: [sent, delivered, failed]
+              description: SMS delivery status

@@ -574,6 +574,18 @@ variable "api_gateway_minimum_compression_size" {
   default     = 1024
 }
 
+variable "api_gateway_throttling_rate_limit" {
+  description = "API Gateway throttling rate limit (requests per second)"
+  type        = number
+  default     = 1000
+}
+
+variable "api_gateway_throttling_burst_limit" {
+  description = "API Gateway throttling burst limit"
+  type        = number
+  default     = 2000
+}
+
 variable "api_gateway_binary_media_types" {
   description = "Binary media types for API Gateway"
   type        = list(string)

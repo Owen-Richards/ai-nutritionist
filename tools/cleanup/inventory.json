@@ -1,0 +1,206 @@
+{
+  "metadata": {
+    "generated": "2025-10-14",
+    "repository": "ai-nutritionist",
+    "branch": "feature/monorepo-migration",
+    "scan_scope": "full_repository"
+  },
+  "summary": {
+    "total_python_files": 353,
+    "total_markdown_docs": 89,
+    "main_entry_points": [
+      "src/handlers/webhook.py",
+      "src/handlers/universal_message_handler.py",
+      "src/handlers/conversational_messaging_handler.py",
+      "src/api/minimal_app.py"
+    ],
+    "key_packages": [
+      "src/services/meal_planning",
+      "src/services/infrastructure",
+      "src/services/business",
+      "src/services/community",
+      "src/services/gamification",
+      "src/services/analytics",
+      "src/services/monetization",
+      "src/services/ai"
+    ]
+  },
+  "modules": {
+    "core_services": {
+      "meal_planning": {
+        "path": "src/services/meal_planning",
+        "public_api": [
+          "PlanCoordinator",
+          "MealPlanPipeline",
+          "InMemoryPlanRepository",
+          "RuleBasedMealPlanEngine",
+          "MealPlanningService",
+          "MealOptimizer"
+        ],
+        "entry_points": [
+          "plan_coordinator.py",
+          "pipeline.py",
+          "planner.py"
+        ],
+        "stability": "public",
+        "test_coverage": "tests/unit/meal_planning/"
+      },
+      "infrastructure": {
+        "path": "src/services/infrastructure",
+        "public_api": [
+          "AIService",
+          "CachingService",
+          "ErrorRecoveryService",
+          "MonitoringService",
+          "RateLimiter",
+          "PrivacyComplianceService",
+          "ObservabilityService"
+        ],
+        "entry_points": [
+          "ai.py",
+          "caching.py",
+          "error_recovery.py",
+          "monitoring.py",
+          "rate_limiter.py",
+          "privacy_compliance.py",
+          "observability.py"
+        ],
+        "stability": "public",
+        "test_coverage": "tests/unit/infrastructure/"
+      },
+      "business": {
+        "path": "src/services/business",
+        "public_api": [
+          "SubscriptionService",
+          "RevenueOptimizationService",
+          "ComplianceSecurityService",
+          "UserCostTracker",
+          "ProfitEnforcementService"
+        ],
+        "entry_points": [
+          "subscription.py",
+          "revenue.py",
+          "compliance.py",
+          "cost_tracking.py"
+        ],
+        "stability": "public",
+        "test_coverage": "tests/unit/business/"
+      },
+      "messaging": {
+        "path": "src/adapters",
+        "public_api": [
+          "MessagingAdapter",
+          "PinpointAdapter"
+        ],
+        "entry_points": [
+          "messaging_adapters.py"
+        ],
+        "stability": "public",
+        "test_coverage": "tests/integration/adapters/"
+      }
+    },
+    "standalone_modules": {
+      "compliance_automation": {
+        "path": "compliance-automation",
+        "status": "ISOLATED_NOT_INTEGRATED",
+        "description": "Standalone compliance automation framework with own dependencies",
+        "public_api": [
+          "ComplianceEngine",
+          "AuditManager",
+          "ReportingEngine",
+          "EvidenceCollector"
+        ],
+        "dependencies": {
+          "separate_requirements": true,
+          "requirements_file": "compliance-automation/requirements.txt",
+          "has_deployment_script": true
+        },
+        "referenced_by": [],
+        "imports_from_main": false,
+        "recommendation": "ASSESS_INTEGRATION_OR_REMOVE"
+      },
+      "chaos_engineering": {
+        "path": "chaos-engineering",
+        "status": "TOOL_STANDALONE",
+        "description": "Chaos engineering framework for resilience testing",
+        "public_api": [
+          "ChaosCLI"
+        ],
+        "referenced_by": [
+          "tests/chaos"
+        ],
+        "recommendation": "KEEP_AS_DEV_TOOL"
+      },
+      "accessibility": {
+        "path": "accessibility",
+        "status": "NODE_TOOLING",
+        "description": "Accessibility testing tools (Node.js)",
+        "referenced_by": [],
+        "recommendation": "KEEP_AS_DEV_TOOL"
+      }
+    },
+    "api_routes": {
+      "path": "src/api/routes",
+      "endpoints": [
+        "/v1/plan",
+        "/v1/community",
+        "/v1/gamification",
+        "/v1/analytics",
+        "/v1/security",
+        "/v1/dashboard"
+      ],
+      "referenced_by": [
+        "src/api/minimal_app.py",
+        "tests/unit/test_plan_api.py"
+      ]
+    }
+  },
+  "entry_points": {
+    "lambda_handlers": [
+      {
+        "file": "src/handlers/webhook.py",
+        "function": "lambda_handler",
+        "purpose": "Main webhook handler for incoming messages"
+      },
+      {
+        "file": "src/handlers/universal_message_handler.py",
+        "function": "lambda_handler",
+        "purpose": "Universal message processing"
+      },
+      {
+        "file": "src/handlers/conversational_messaging_handler.py",
+        "function": "lambda_handler",
+        "purpose": "Conversational messaging flow"
+      }
+    ],
+    "api_apps": [
+      {
+        "file": "src/api/minimal_app.py",
+        "type": "FastAPI",
+        "purpose": "HTTP API for meal planning and services"
+      }
+    ],
+    "cli_tools": [
+      {
+        "file": "chaos-engineering/chaos_cli.py",
+        "purpose": "Chaos engineering CLI"
+      },
+      {
+        "file": "compliance-automation/deploy.py",
+        "purpose": "Compliance framework deployment"
+      }
+    ]
+  },
+  "reference_graph": {
+    "high_coupling": [
+      "src/services/meal_planning -> src/services/personalization",
+      "src/services/infrastructure -> src/services/business",
+      "src/api/dependencies -> src/services/*"
+    ],
+    "isolated_modules": [
+      "compliance-automation",
+      "accessibility",
+      "performance/comprehensive"
+    ]
+  }
+}

@@ -645,16 +645,14 @@ class TestAWSEndUserMessagingMigration:
     
     def setup_method(self):
         """Setup for AWS End User Messaging migration tests"""
-        from src.services.messaging.sms import UniversalMessagingService
-        self.messaging_service = UniversalMessagingService()
+        from services.messaging_service.src.application.sms import UniversalMessagingService        self.messaging_service = UniversalMessagingService()
     
     def test_aws_end_user_messaging_deprecation_warning(self):
         """Test that system logs warning when falling back to deprecated AWS End User Messaging"""
         with patch('src.services.messaging.sms.logger') as mock_logger:
             with patch.dict('os.environ', {}, clear=True):  # No provider configs
                 # This should trigger AWS End User Messaging fallback and warning
-                from src.services.messaging.sms import UniversalMessagingService
-                service = UniversalMessagingService()
+                from services.messaging_service.src.application.sms import UniversalMessagingService                service = UniversalMessagingService()
                 
                 # Verify warning was logged about AWS End User Messaging deprecation
                 warning_calls = [call for call in mock_logger.warning.call_args_list 
@@ -669,8 +667,7 @@ class TestAWSEndUserMessagingMigration:
             'TWILIO_SMS_FROM': '+12345678901',
             'AWS_SMS_ORIGINATION_IDENTITY': '+19876543210'  # Also configure AWS End User Messaging
         }):
-            from src.services.messaging.sms import UniversalMessagingService
-            service = UniversalMessagingService()
+            from services.messaging_service.src.application.sms import UniversalMessagingService            service = UniversalMessagingService()
             
             # Should have Twilio as primary, not AWS End User Messaging
             assert "sms" in service.platforms
@@ -686,8 +683,7 @@ class TestAWSEndUserMessagingMigration:
             'WHATSAPP_CLOUD_PHONE_NUMBER_ID': 'test_phone_id',
             'AWS_SMS_CONFIGURATION_SET': 'test_app_id'  # Also configure AWS End User Messaging WhatsApp
         }):
-            from src.services.messaging.sms import UniversalMessagingService
-            service = UniversalMessagingService()
+            from services.messaging_service.src.application.sms import UniversalMessagingService            service = UniversalMessagingService()
             
             # Should have WhatsApp Cloud API, not AWS End User Messaging WhatsApp
             assert "whatsapp" in service.platforms
@@ -706,8 +702,7 @@ class TestAWSEndUserMessagingMigration:
                 'PHONE_POOL_ID': 'test-pool-id',
                 'SMS_CONFIG_SET': 'test-config-set'
             }):
-                from src.services.messaging.notifications import AWSMessagingService
-                aws_service = AWSMessagingService()
+                from services.messaging_service.src.application.notifications import AWSMessagingService                aws_service = AWSMessagingService()
                 
                 # Mock the private method that gets origination number
                 aws_service._origination_number = "+12345678901"
@@ -726,8 +721,7 @@ class TestAWSEndUserMessagingMigration:
             'TWILIO_ACCOUNT_SID': 'test_sid',
             'TWILIO_AUTH_TOKEN': 'test_token'
         }):
-            from src.services.messaging.sms import UniversalMessagingService
-            service = UniversalMessagingService()
+            from services.messaging_service.src.application.sms import UniversalMessagingService            service = UniversalMessagingService()
             assert len(service.platforms) > 0  # Should have Twilio
         
         # Simulate being past October 30, 2026 (Pinpoint EOL)
@@ -736,8 +730,7 @@ class TestAWSEndUserMessagingMigration:
             'TWILIO_ACCOUNT_SID': 'test_sid',
             'TWILIO_AUTH_TOKEN': 'test_token'
         }):
-            from src.services.messaging.sms import UniversalMessagingService
-            service = UniversalMessagingService()
+            from services.messaging_service.src.application.sms import UniversalMessagingService            service = UniversalMessagingService()
             # Should still have messaging capability
             assert len(service.platforms) > 0
     
@@ -757,8 +750,7 @@ class TestAWSEndUserMessagingMigration:
             
             mock_boto.side_effect = boto_client_side_effect
             
-            from src.services.messaging.notifications import AWSMessagingService
-            service = AWSMessagingService()
+            from services.messaging_service.src.application.notifications import AWSMessagingService            service = AWSMessagingService()
             
             # Should use the continuing SMS API, not the deprecated Pinpoint API for SMS
             assert service.sms_client == mock_sms_client

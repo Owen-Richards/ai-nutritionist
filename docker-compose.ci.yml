@@ -1,0 +1,68 @@
+# Docker Compose for CI/CD Testing
+version: '3.8'
+
+services:
+  redis-test:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  postgres-test:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: test_db
+      POSTGRES_USER: test_user
+      POSTGRES_PASSWORD: test_password
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test_user -d test_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  localstack:
+    image: localstack/localstack:latest
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=s3,lambda,apigateway,cloudformation,logs,sts
+      - DEBUG=1
+      - DATA_DIR=/tmp/localstack/data
+      - LAMBDA_EXECUTOR=docker
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "./tests/fixtures/localstack:/tmp/localstack"
+
+  test-runner:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    depends_on:
+      redis-test:
+        condition: service_healthy
+      postgres-test:
+        condition: service_healthy
+    environment:
+      - REDIS_URL=redis://redis-test:6379
+      - DATABASE_URL=postgresql://test_user:test_password@postgres-test:5432/test_db
+      - AWS_ENDPOINT_URL=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+    volumes:
+      - ./src:/app/src
+      - ./tests:/app/tests
+      - ./coverage:/app/coverage
+    command: pytest tests/ -v --cov=src --cov-report=html --cov-report=xml
+
+networks:
+  default:
+    name: ai-nutritionist-ci

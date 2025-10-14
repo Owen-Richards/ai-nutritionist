@@ -1,0 +1,655 @@
+# Advanced Traffic Management for AI Nutritionist Service Mesh
+# Canary deployments, A/B testing, Blue-green deployments, and Traffic splitting
+
+---
+# Canary Deployment Configuration for Nutrition Service
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: nutrition-service-canary
+  namespace: ai-nutritionist
+  labels:
+    deployment-strategy: canary
+spec:
+  hosts:
+  - nutrition-service.ai-nutritionist.svc.cluster.local
+  http:
+  # Canary traffic for beta users
+  - match:
+    - headers:
+        x-user-tier:
+          exact: "beta"
+    - headers:
+        x-canary-enabled:
+          exact: "true"
+    route:
+    - destination:
+        host: nutrition-service.ai-nutritionist.svc.cluster.local
+        subset: canary
+      weight: 100
+    fault:
+      delay:
+        percentage:
+          value: 0.1
+        fixedDelay: 100ms
+    headers:
+      request:
+        add:
+          x-deployment-type: canary
+          x-canary-version: v2.1.0
+  # Gradual canary rollout - 5% traffic
+  - match:
+    - headers:
+        x-canary-percentage:
+          exact: "5"
+    route:
+    - destination:
+        host: nutrition-service.ai-nutritionist.svc.cluster.local
+        subset: stable
+      weight: 95
+    - destination:
+        host: nutrition-service.ai-nutritionist.svc.cluster.local
+        subset: canary
+      weight: 5
+    headers:
+      request:
+        add:
+          x-deployment-type: canary-gradual
+  # Production traffic
+  - route:
+    - destination:
+        host: nutrition-service.ai-nutritionist.svc.cluster.local
+        subset: stable
+      weight: 100
+
+---
+# A/B Testing Configuration for AI Coach Service
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: ai-coach-ab-testing
+  namespace: ai-nutritionist
+  labels:
+    deployment-strategy: ab-testing
+spec:
+  hosts:
+  - ai-coach-service.ai-nutritionist.svc.cluster.local
+  http:
+  # A/B Test - Algorithm A vs Algorithm B
+  - match:
+    - headers:
+        x-ab-test:
+          exact: "nutrition-algorithm"
+    route:
+    # Algorithm A (Current)
+    - destination:
+        host: ai-coach-service.ai-nutritionist.svc.cluster.local
+        subset: algorithm-a
+      weight: 50
+      headers:
+        request:
+          add:
+            x-algorithm-version: "a"
+            x-test-group: "control"
+    # Algorithm B (New)
+    - destination:
+        host: ai-coach-service.ai-nutritionist.svc.cluster.local
+        subset: algorithm-b
+      weight: 50
+      headers:
+        request:
+          add:
+            x-algorithm-version: "b"
+            x-test-group: "treatment"
+    headers:
+      response:
+        add:
+          x-ab-test-active: "true"
+  # Premium user A/B test
+  - match:
+    - headers:
+        x-user-tier:
+          exact: "premium"
+    - headers:
+        x-ab-test-premium:
+          exact: "enabled"
+    route:
+    # Enhanced features test
+    - destination:
+        host: ai-coach-service.ai-nutritionist.svc.cluster.local
+        subset: premium-enhanced
+      weight: 30
+    # Standard premium features
+    - destination:
+        host: ai-coach-service.ai-nutritionist.svc.cluster.local
+        subset: premium-standard
+      weight: 70
+  # Default routing
+  - route:
+    - destination:
+        host: ai-coach-service.ai-nutritionist.svc.cluster.local
+        subset: stable
+      weight: 100
+
+---
+# Blue-Green Deployment for Payment Service
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: payment-service-blue-green
+  namespace: ai-nutritionist
+  labels:
+    deployment-strategy: blue-green
+spec:
+  hosts:
+  - payment-service.ai-nutritionist.svc.cluster.local
+  http:
+  # Green deployment for testing
+  - match:
+    - headers:
+        x-deployment-target:
+          exact: "green"
+    - headers:
+        x-testing-mode:
+          exact: "enabled"
+    route:
+    - destination:
+        host: payment-service.ai-nutritionist.svc.cluster.local
+        subset: green
+      weight: 100
+    headers:
+      request:
+        add:
+          x-deployment-color: green
+          x-payment-test-mode: "true"
+  # Blue deployment (production)
+  - route:
+    - destination:
+        host: payment-service.ai-nutritionist.svc.cluster.local
+        subset: blue
+      weight: 100
+    headers:
+      request:
+        add:
+          x-deployment-color: blue
+
+---
+# Feature Flag Based Traffic Routing
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: feature-flag-routing
+  namespace: ai-nutritionist
+  labels:
+    routing-type: feature-flags
+spec:
+  hosts:
+  - messaging-service.ai-nutritionist.svc.cluster.local
+  http:
+  # New messaging provider for test users
+  - match:
+    - headers:
+        x-feature-flag-new-provider:
+          exact: "enabled"
+    - headers:
+        x-user-segment:
+          regex: "test|beta|internal"
+    route:
+    - destination:
+        host: messaging-service.ai-nutritionist.svc.cluster.local
+        subset: new-provider
+      weight: 100
+    headers:
+      request:
+        add:
+          x-messaging-provider: aws-pinpoint
+          x-feature-active: new-provider
+  # Enhanced messaging features
+  - match:
+    - headers:
+        x-feature-flag-enhanced-messaging:
+          exact: "enabled"
+    - headers:
+        x-user-tier:
+          regex: "premium|enterprise"
+    route:
+    - destination:
+        host: messaging-service.ai-nutritionist.svc.cluster.local
+        subset: enhanced
+      weight: 100
+    headers:
+      request:
+        add:
+          x-messaging-features: enhanced
+  # Standard messaging
+  - route:
+    - destination:
+        host: messaging-service.ai-nutritionist.svc.cluster.local
+        subset: standard
+      weight: 100
+
+---
+# Geographic Traffic Routing
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: geographic-routing
+  namespace: ai-nutritionist
+  labels:
+    routing-type: geographic
+spec:
+  hosts:
+  - health-tracking-service.ai-nutritionist.svc.cluster.local
+  http:
+  # European users - GDPR compliant instance
+  - match:
+    - headers:
+        x-user-region:
+          regex: "EU|GDPR"
+    - headers:
+        cloudfront-viewer-country:
+          regex: "DE|FR|IT|ES|NL|BE|AT|PT|PL|CZ|HU|SK|SI|HR|BG|RO|GR|CY|MT|LU|LV|LT|EE|FI|SE|DK|IE"
+    route:
+    - destination:
+        host: health-tracking-service.ai-nutritionist.svc.cluster.local
+        subset: eu-gdpr
+      weight: 100
+    headers:
+      request:
+        add:
+          x-data-region: eu
+          x-compliance-mode: gdpr
+  # US users
+  - match:
+    - headers:
+        x-user-region:
+          exact: "US"
+    - headers:
+        cloudfront-viewer-country:
+          exact: "US"
+    route:
+    - destination:
+        host: health-tracking-service.ai-nutritionist.svc.cluster.local
+        subset: us
+      weight: 100
+    headers:
+      request:
+        add:
+          x-data-region: us
+          x-compliance-mode: hipaa
+  # Default routing
+  - route:
+    - destination:
+        host: health-tracking-service.ai-nutritionist.svc.cluster.local
+        subset: global
+      weight: 100
+
+---
+# Load Testing Traffic Management
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: load-testing-routing
+  namespace: ai-nutritionist
+  labels:
+    routing-type: load-testing
+spec:
+  hosts:
+  - "*.ai-nutritionist.svc.cluster.local"
+  http:
+  # Load testing traffic isolation
+  - match:
+    - headers:
+        x-load-test:
+          exact: "true"
+    - headers:
+        x-test-scenario:
+          regex: "stress|performance|capacity"
+    route:
+    - destination:
+        host: nutrition-service.ai-nutritionist.svc.cluster.local
+        subset: load-test
+      weight: 100
+    fault:
+      delay:
+        percentage:
+          value: 5.0
+        fixedDelay: 200ms
+    headers:
+      request:
+        add:
+          x-test-environment: load-testing
+          x-isolation-mode: "true"
+
+---
+# Circuit Breaker Testing
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: circuit-breaker-testing
+  namespace: ai-nutritionist
+spec:
+  hosts:
+  - ai-coach-service.ai-nutritionist.svc.cluster.local
+  http:
+  # Circuit breaker simulation
+  - match:
+    - headers:
+        x-circuit-breaker-test:
+          exact: "enabled"
+    route:
+    - destination:
+        host: ai-coach-service.ai-nutritionist.svc.cluster.local
+        subset: circuit-test
+      weight: 100
+    fault:
+      abort:
+        percentage:
+          value: 30.0
+        httpStatus: 503
+    retries:
+      attempts: 1
+      perTryTimeout: 1s
+
+---
+# Advanced Destination Rules for Traffic Management
+
+# Nutrition Service Subsets
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: nutrition-service-subsets
+  namespace: ai-nutritionist
+spec:
+  host: nutrition-service.ai-nutritionist.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+    connectionPool:
+      tcp:
+        maxConnections: 200
+      http:
+        http1MaxPendingRequests: 100
+        http2MaxRequests: 200
+        maxRequestsPerConnection: 10
+        maxRetries: 3
+    loadBalancer:
+      simple: LEAST_CONN
+      consistentHash:
+        httpHeaderName: "x-user-id"
+    outlierDetection:
+      consecutiveGatewayErrors: 5
+      consecutive5xxErrors: 5
+      interval: 30s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+      minHealthPercent: 50
+  subsets:
+  - name: stable
+    labels:
+      version: stable
+      deployment: production
+  - name: canary
+    labels:
+      version: canary
+      deployment: staging
+    trafficPolicy:
+      connectionPool:
+        tcp:
+          maxConnections: 50
+        http:
+          http1MaxPendingRequests: 25
+  - name: load-test
+    labels:
+      version: stable
+      environment: load-test
+    trafficPolicy:
+      connectionPool:
+        tcp:
+          maxConnections: 500
+        http:
+          http1MaxPendingRequests: 250
+
+---
+# AI Coach Service Subsets for A/B Testing
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: ai-coach-service-subsets
+  namespace: ai-nutritionist
+spec:
+  host: ai-coach-service.ai-nutritionist.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 50
+        http2MaxRequests: 100
+    outlierDetection:
+      consecutiveGatewayErrors: 3
+      consecutive5xxErrors: 3
+      interval: 15s
+      baseEjectionTime: 15s
+      maxEjectionPercent: 30
+      minHealthPercent: 70
+  subsets:
+  - name: stable
+    labels:
+      version: stable
+      algorithm: current
+  - name: algorithm-a
+    labels:
+      version: stable
+      algorithm: algorithm-a
+  - name: algorithm-b
+    labels:
+      version: v2
+      algorithm: algorithm-b
+  - name: premium-standard
+    labels:
+      version: stable
+      tier: premium
+  - name: premium-enhanced
+    labels:
+      version: v2
+      tier: premium-enhanced
+  - name: circuit-test
+    labels:
+      version: stable
+      test: circuit-breaker
+    trafficPolicy:
+      connectionPool:
+        tcp:
+          maxConnections: 10
+        http:
+          http1MaxPendingRequests: 5
+
+---
+# Payment Service Blue-Green Subsets
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: payment-service-blue-green
+  namespace: ai-nutritionist
+spec:
+  host: payment-service.ai-nutritionist.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+    connectionPool:
+      tcp:
+        maxConnections: 50
+        connectTimeout: 10s
+      http:
+        http1MaxPendingRequests: 25
+        http2MaxRequests: 50
+        maxRequestsPerConnection: 1
+        maxRetries: 1
+    outlierDetection:
+      consecutiveGatewayErrors: 2
+      consecutive5xxErrors: 2
+      interval: 10s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 25
+      minHealthPercent: 75
+  subsets:
+  - name: blue
+    labels:
+      version: blue
+      deployment: production
+  - name: green
+    labels:
+      version: green
+      deployment: staging
+    trafficPolicy:
+      connectionPool:
+        tcp:
+          maxConnections: 25
+
+---
+# Messaging Service Feature Flag Subsets
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: messaging-service-subsets
+  namespace: ai-nutritionist
+spec:
+  host: messaging-service.ai-nutritionist.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+    connectionPool:
+      tcp:
+        maxConnections: 150
+      http:
+        http1MaxPendingRequests: 75
+        http2MaxRequests: 150
+        maxRequestsPerConnection: 20
+    loadBalancer:
+      simple: ROUND_ROBIN
+  subsets:
+  - name: standard
+    labels:
+      version: stable
+      provider: twilio
+  - name: new-provider
+    labels:
+      version: v2
+      provider: aws-pinpoint
+  - name: enhanced
+    labels:
+      version: stable
+      features: enhanced
+
+---
+# Health Tracking Geographic Subsets
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: health-tracking-geographic
+  namespace: ai-nutritionist
+spec:
+  host: health-tracking-service.ai-nutritionist.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 50
+        http2MaxRequests: 100
+    loadBalancer:
+      simple: LEAST_CONN
+  subsets:
+  - name: us
+    labels:
+      region: us
+      compliance: hipaa
+  - name: eu-gdpr
+    labels:
+      region: eu
+      compliance: gdpr
+  - name: global
+    labels:
+      region: global
+      compliance: standard
+
+---
+# Traffic Mirroring for Testing
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: traffic-mirroring
+  namespace: ai-nutritionist
+spec:
+  hosts:
+  - nutrition-service.ai-nutritionist.svc.cluster.local
+  http:
+  - match:
+    - headers:
+        x-mirror-traffic:
+          exact: "enabled"
+    route:
+    - destination:
+        host: nutrition-service.ai-nutritionist.svc.cluster.local
+        subset: stable
+      weight: 100
+    mirror:
+      host: nutrition-service.ai-nutritionist.svc.cluster.local
+      subset: canary
+    mirrorPercentage:
+      value: 100.0
+    headers:
+      request:
+        add:
+          x-mirror-active: "true"
+
+---
+# Timeout and Retry Policies
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: timeout-retry-policies
+  namespace: ai-nutritionist
+spec:
+  hosts:
+  - "*.ai-nutritionist.svc.cluster.local"
+  http:
+  # AI Coach Service - Longer timeouts for ML processing
+  - match:
+    - uri:
+        prefix: /api/v1/ai-coach
+    route:
+    - destination:
+        host: ai-coach-service.ai-nutritionist.svc.cluster.local
+    timeout: 120s
+    retries:
+      attempts: 2
+      perTryTimeout: 60s
+      retryOn: 5xx,reset,connect-failure,refused-stream
+      retryRemoteLocalities: true
+  # Payment Service - Strict timeouts and minimal retries
+  - match:
+    - uri:
+        prefix: /api/v1/payments
+    route:
+    - destination:
+        host: payment-service.ai-nutritionist.svc.cluster.local
+    timeout: 30s
+    retries:
+      attempts: 1
+      perTryTimeout: 15s
+      retryOn: 5xx,reset,connect-failure
+  # Default policies
+  - route:
+    - destination:
+        host: nutrition-service.ai-nutritionist.svc.cluster.local
+    timeout: 60s
+    retries:
+      attempts: 3
+      perTryTimeout: 20s
+      retryOn: 5xx,reset,connect-failure,refused-stream

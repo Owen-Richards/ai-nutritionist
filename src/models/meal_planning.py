@@ -644,3 +644,94 @@ class MealPlanManager:
             "cooking_history": self.cooking_history,
             "last_updated": self.last_updated.isoformat()
         }
+
+
+# Additional classes for database layer compatibility
+@dataclass
+class MealEntry:
+    """Individual meal entry for generated meal plans."""
+    meal_id: str
+    day: str  # monday, tuesday, etc.
+    meal_type: str  # breakfast, lunch, dinner
+    title: str
+    description: str
+    ingredients: List[str]
+    calories: int
+    prep_minutes: int
+    macros: Dict[str, float]  # protein, carbs, fat
+    cost: float
+    tags: List[str]
+
+
+@dataclass 
+class GeneratedMealPlan:
+    """Complete generated meal plan for a user."""
+    plan_id: str
+    user_id: str
+    week_start: date
+    generated_at: datetime
+    meals: List[MealEntry]
+    estimated_cost: float
+    total_calories: int
+    grocery_list: List[Dict[str, str]]
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for storage."""
+        return {
+            "plan_id": self.plan_id,
+            "user_id": self.user_id,
+            "week_start": self.week_start.isoformat(),
+            "generated_at": self.generated_at.isoformat(),
+            "meals": [asdict(meal) for meal in self.meals],
+            "estimated_cost": self.estimated_cost,
+            "total_calories": self.total_calories,
+            "grocery_list": self.grocery_list
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'GeneratedMealPlan':
+        """Create from dictionary."""
+        return cls(
+            plan_id=data["plan_id"],
+            user_id=data["user_id"],
+            week_start=date.fromisoformat(data["week_start"]),
+            generated_at=datetime.fromisoformat(data["generated_at"]),
+            meals=[MealEntry(**meal) for meal in data["meals"]],
+            estimated_cost=data["estimated_cost"],
+            total_calories=data["total_calories"],
+            grocery_list=data["grocery_list"]
+        )
+
+
+@dataclass
+class PlanFeedback:
+    """User feedback on meal plans."""
+    feedback_id: str
+    plan_id: str
+    user_id: str
+    rating: int  # 1-5 stars
+    comments: Optional[str] = None
+    liked_meals: List[str] = None
+    disliked_meals: List[str] = None
+    created_at: datetime = None
+    
+    def __post_init__(self):
+        if self.created_at is None:
+            self.created_at = datetime.utcnow()
+        if self.liked_meals is None:
+            self.liked_meals = []
+        if self.disliked_meals is None:
+            self.disliked_meals = []
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for storage."""
+        return {
+            "feedback_id": self.feedback_id,
+            "plan_id": self.plan_id,
+            "user_id": self.user_id,
+            "rating": self.rating,
+            "comments": self.comments,
+            "liked_meals": self.liked_meals,
+            "disliked_meals": self.disliked_meals,
+            "created_at": self.created_at.isoformat()
+        }

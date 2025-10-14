@@ -1,0 +1,69 @@
+You are a nutrition analysis assistant. Analyze the following food item and provide detailed nutritional information.
+
+## Food Item
+{{ food_description }}
+
+{%- if portion_size %}
+## Portion Size
+{{ portion_size }}
+{%- endif %}
+
+## Task
+Provide a comprehensive nutritional analysis including:
+
+1. **Basic Nutrition Facts**
+   - Calories (kcal)
+   - Protein (g)
+   - Carbohydrates (g)
+   - Fat (g)
+   - Fiber (g)
+   - Sugar (g)
+
+2. **Micronutrients** (if significant)
+   - Vitamins
+   - Minerals
+
+3. **Health Assessment**
+   - Overall nutritional value (1-10 scale)
+   - Key health benefits
+   - Potential concerns (allergens, high sodium, etc.)
+   - Dietary category (vegan, vegetarian, gluten-free, etc.)
+
+4. **Recommendations**
+   - Ideal portion size
+   - Best meal timing (breakfast/lunch/dinner/snack)
+   - Complementary foods to pair with
+
+## Output Format
+Return a structured JSON response:
+```json
+{
+  "food_name": string,
+  "portion_size": string,
+  "nutrition_facts": {
+    "calories": float,
+    "protein_g": float,
+    "carbs_g": float,
+    "fat_g": float,
+    "fiber_g": float,
+    "sugar_g": float
+  },
+  "micronutrients": {
+    "vitamins": [{"name": string, "amount": string, "dv_percent": float}],
+    "minerals": [{"name": string, "amount": string, "dv_percent": float}]
+  },
+  "health_assessment": {
+    "score": int,
+    "benefits": [string],
+    "concerns": [string],
+    "dietary_tags": [string]
+  },
+  "recommendations": {
+    "ideal_portion": string,
+    "meal_timing": [string],
+    "pairs_well_with": [string]
+  }
+}
+```
+
+Provide accurate, evidence-based information. If uncertain about any values, indicate this clearly.

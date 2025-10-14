@@ -1,0 +1,456 @@
+name: 🚀 Build and Test
+
+on:
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+env:
+  NODE_VERSION: '20'
+  PYTHON_VERSION: '3.13'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-matrix:
+    name: 🏗️ Build Matrix Setup
+    runs-on: ubuntu-latest
+    outputs:
+      python-matrix: ${{ steps.python-matrix.outputs.matrix }}
+      node-matrix: ${{ steps.node-matrix.outputs.matrix }}
+    steps:
+      - name: Setup Python matrix
+        id: python-matrix
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "matrix=[\"3.11\", \"3.12\", \"3.13\"]" >> $GITHUB_OUTPUT
+          else
+            echo "matrix=[\"3.13\"]" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Setup Node matrix
+        id: node-matrix
+        run: |
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "matrix=[\"18\", \"20\"]" >> $GITHUB_OUTPUT
+          else
+            echo "matrix=[\"20\"]" >> $GITHUB_OUTPUT
+          fi
+
+  python-build:
+    name: 🐍 Python Build & Test
+    runs-on: ubuntu-latest
+    needs: build-matrix
+    strategy:
+      matrix:
+        python-version: ${{ fromJson(needs.build-matrix.outputs.python-matrix) }}
+      fail-fast: false
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y redis-server
+
+      - name: Start Redis
+        run: |
+          sudo systemctl start redis-server
+          sudo systemctl status redis-server
+
+      - name: Create virtual environment
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          echo "VIRTUAL_ENV=$VIRTUAL_ENV" >> $GITHUB_ENV
+          echo "$VIRTUAL_ENV/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip wheel setuptools
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Cache Python dependencies
+        uses: actions/cache@v3
+        with:
+          path: .venv
+          key: ${{ runner.os }}-python-${{ matrix.python-version }}-${{ hashFiles('requirements*.txt') }}
+
+      - name: Code quality checks
+        run: |
+          # Format check
+          black --check src/ tests/
+          
+          # Lint check
+          ruff check src/ tests/
+          
+          # Type checking
+          mypy src/
+          
+          # Security check
+          bandit -r src/ -ll
+
+      - name: Run unit tests
+        run: |
+          pytest tests/unit/ \
+            -v \
+            --cov=src \
+            --cov-report=xml \
+            --cov-report=html \
+            --cov-fail-under=80 \
+            --junitxml=pytest-unit.xml
+
+      - name: Run integration tests
+        run: |
+          pytest tests/integration/ \
+            -v \
+            --junitxml=pytest-integration.xml
+
+      - name: Run end-to-end tests
+        run: |
+          pytest tests/e2e/ \
+            -v \
+            --junitxml=pytest-e2e.xml
+
+      - name: Run regression tests
+        run: |
+          pytest tests/regression/ \
+            -v \
+            --junitxml=pytest-regression.xml
+
+      - name: Generate test report
+        if: always()
+        run: |
+          python scripts/generate_test_report.py \
+            --unit-results pytest-unit.xml \
+            --integration-results pytest-integration.xml \
+            --e2e-results pytest-e2e.xml \
+            --regression-results pytest-regression.xml \
+            --output test-report.html
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: python-test-results-${{ matrix.python-version }}
+          path: |
+            pytest-*.xml
+            htmlcov/
+            test-report.html
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          flags: python
+          name: python-${{ matrix.python-version }}
+
+  node-build:
+    name: 📦 Node.js Build & Test
+    runs-on: ubuntu-latest
+    needs: build-matrix
+    strategy:
+      matrix:
+        node-version: ${{ fromJson(needs.build-matrix.outputs.node-matrix) }}
+      fail-fast: false
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: |
+          yarn install --frozen-lockfile --prefer-offline
+
+      - name: Cache node modules
+        uses: actions/cache@v3
+        with:
+          path: |
+            node_modules
+            apps/*/node_modules
+            packages/*/node_modules
+          key: ${{ runner.os }}-node-${{ matrix.node-version }}-${{ hashFiles('yarn.lock') }}
+
+      - name: Lint code
+        run: |
+          yarn lint --max-warnings 0
+
+      - name: Type checking
+        run: |
+          yarn turbo run type-check
+
+      - name: Run unit tests
+        run: |
+          yarn turbo run test:unit --coverage
+
+      - name: Run integration tests
+        run: |
+          yarn turbo run test:integration
+
+      - name: Build all packages
+        run: |
+          yarn turbo run build
+
+      - name: Bundle analysis
+        run: |
+          yarn turbo run analyze
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: node-build-artifacts-${{ matrix.node-version }}
+          path: |
+            apps/*/dist/
+            apps/*/.next/
+            packages/*/dist/
+            bundle-analysis/
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: node-test-results-${{ matrix.node-version }}
+          path: |
+            coverage/
+            test-results/
+
+  docker-build:
+    name: 🐳 Docker Build
+    runs-on: ubuntu-latest
+    needs: [python-build]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run security scan on image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload security scan results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  performance-benchmarks:
+    name: ⚡ Performance Benchmarks
+    runs-on: ubuntu-latest
+    needs: [python-build]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest-benchmark locust
+
+      - name: Run performance benchmarks
+        run: |
+          pytest tests/performance/ \
+            --benchmark-only \
+            --benchmark-json=benchmark-results.json \
+            --benchmark-compare-fail=mean:10%
+
+      - name: Run load tests
+        run: |
+          python tests/performance/load_tests.py
+
+      - name: Performance regression analysis
+        run: |
+          python scripts/performance_analysis.py \
+            --current benchmark-results.json \
+            --baseline performance/baseline-benchmarks.json \
+            --output performance-report.html
+
+      - name: Upload performance results
+        uses: actions/upload-artifact@v3
+        with:
+          name: performance-results
+          path: |
+            benchmark-results.json
+            performance-report.html
+            load-test-results/
+
+  security-comprehensive:
+    name: 🔒 Comprehensive Security Scan
+    runs-on: ubuntu-latest
+    needs: [python-build, node-build]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run CodeQL Analysis
+        uses: github/codeql-action/init@v2
+        with:
+          languages: python, javascript
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v2
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v2
+
+      - name: SAST scan with Semgrep
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/security-audit
+            p/secrets
+            p/owasp-top-ten
+
+      - name: Dependency vulnerability scan
+        run: |
+          # Python dependencies
+          pip install safety
+          safety check --json --output safety-report.json
+          
+          # Node.js dependencies
+          npx audit-ci --config audit-ci.json
+
+      - name: License compliance check
+        run: |
+          pip install pip-licenses
+          pip-licenses --format json --output-file python-licenses.json
+          
+          npx license-checker --json --out node-licenses.json
+
+      - name: Upload security artifacts
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: security-reports
+          path: |
+            safety-report.json
+            python-licenses.json
+            node-licenses.json
+
+  build-summary:
+    name: 📊 Build Summary
+    runs-on: ubuntu-latest
+    needs: [python-build, node-build, docker-build, performance-benchmarks, security-comprehensive]
+    if: always()
+    
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+
+      - name: Generate build summary
+        run: |
+          cat > build-summary.md << 'EOF'
+          # Build Summary
+          
+          ## Status Overview
+          - Python Build: ${{ needs.python-build.result }}
+          - Node.js Build: ${{ needs.node-build.result }}
+          - Docker Build: ${{ needs.docker-build.result }}
+          - Performance Tests: ${{ needs.performance-benchmarks.result }}
+          - Security Scan: ${{ needs.security-comprehensive.result }}
+          
+          ## Artifacts Generated
+          - Docker images pushed to registry
+          - Test coverage reports
+          - Performance benchmarks
+          - Security scan results
+          - Build artifacts for deployment
+          
+          ## Next Steps
+          EOF
+          
+          if [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "- Ready for production deployment" >> build-summary.md
+          else
+            echo "- Ready for staging deployment" >> build-summary.md
+          fi
+
+      - name: Upload build summary
+        uses: actions/upload-artifact@v3
+        with:
+          name: build-summary
+          path: build-summary.md
+
+      - name: Notify on failure
+        if: failure()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Build failed for ${context.ref}`,
+              body: `The build pipeline failed. Please check the [workflow run](${context.payload.workflow_run?.html_url}) for details.`,
+              labels: ['bug', 'ci/cd']
+            });

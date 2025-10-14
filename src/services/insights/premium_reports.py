@@ -6,8 +6,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
-from src.models.user import InventoryLink, UserProfile
-from src.services.compliance.playbook_registry import PlaybookRegistry, PlaybookEntry
+from packages.core.src.entities.user import InventoryLink, UserProfilefrom src.services.compliance.playbook_registry import PlaybookRegistry, PlaybookEntry
 
 
 @dataclass
