@@ -1,0 +1,34 @@
+# Production Environment Configuration Template
+# Copy this file to terraform.tfvars and update with your values
+
+# Required Variables
+openai_api_key    = "your-production-openai-api-key"
+nutrition_api_key = "your-production-nutrition-api-key"
+owner_email       = "production@yourcompany.com"
+app_version       = "v1.0.0"
+
+# Custom Domain Configuration (optional)
+# api_certificate_arn = "arn:aws:acm:us-east-1:123456789012:certificate/abc123def456"
+
+# Security Configuration
+management_ip_whitelist = [
+  "203.0.113.0/24",    # Office network
+  "198.51.100.0/24"    # VPN network
+]
+
+# KMS Key Management
+kms_admin_arns = [
+  "arn:aws:iam::123456789012:user/terraform-admin",
+  "arn:aws:iam::123456789012:role/DevOpsRole"
+]
+
+kms_user_arns = [
+  "arn:aws:iam::123456789012:role/ApplicationRole"
+]
+
+# Production settings (already optimized for production)
+# enable_enhanced_monitoring = true
+# enable_auto_scaling = true
+# enable_waf = true
+# enable_cross_region_backup = true
+# rds_performance_insights_enabled = true

@@ -10,8 +10,7 @@ from unittest.mock import Mock, patch, AsyncMock
 from typing import Dict, Any
 
 # Import individual components for testing without AWS dependencies
-from src.config.ai_config import AIConfigManager, AIModel
-from src.services.ai.prompt_engine import AdvancedPromptEngine
+from packages.core.src.domain_services.config.ai_config import AIConfigManager, AIModelfrom src.services.ai.prompt_engine import AdvancedPromptEngine
 
 
 class TestAIConfigurationOptimization:

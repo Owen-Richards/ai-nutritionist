@@ -1,0 +1,21 @@
+{
+  "title": "Today",
+  "welcome": "Welcome back, {{name}}",
+  "subscriptionSummary": "You are on the {{plan}} plan with {{tokens, number}} tokens remaining.",
+  "noNameSummary": "You are on the {{plan}} plan with {{tokens, number}} tokens remaining.",
+  "nextPlanHeading": "This week's highlight",
+  "actionsHeading": "Quick actions",
+  "insightsHeading": "Insights",
+  "insightsCopy": "We'll surface adherence, cost, and readiness insights once analytics sync completes.",
+  "viewPlanCta": "View weekly plan",
+  "reviewGroceriesCta": "Review groceries",
+  "logMealCta": "Quick log",
+  "empty": {
+    "title": "Plan on the way",
+    "body": "We're generating today's plan. Check back soon."
+  },
+  "error": {
+    "title": "Plan unavailable",
+    "body": "We could not load today's plan. Pull to refresh or try again later."
+  }
+}

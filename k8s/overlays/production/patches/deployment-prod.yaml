@@ -1,0 +1,58 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-coach-service
+  namespace: ai-nutritionist-prod
+spec:
+  template:
+    spec:
+      containers:
+      - name: ai-coach-service
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1500m"
+        env:
+        - name: AI_MODEL_ENDPOINT
+          value: "bedrock.us-east-1.amazonaws.com"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nutrition-service
+  namespace: ai-nutritionist-prod
+spec:
+  template:
+    spec:
+      containers:
+      - name: nutrition-service
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "300m"
+          limits:
+            memory: "1Gi"
+            cpu: "800m"
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: messaging-service
+  namespace: ai-nutritionist-prod
+spec:
+  template:
+    spec:
+      containers:
+      - name: messaging-service
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "300m"
+          limits:
+            memory: "1Gi"
+            cpu: "800m"

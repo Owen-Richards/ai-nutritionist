@@ -1,0 +1,13 @@
+{
+  "title": "Groceries",
+  "description": "Check items off as you shop or share with your retailer.",
+  "thisWeek": "This week's list",
+  "empty": {
+    "title": "List unavailable",
+    "body": "We'll load your groceries as soon as the plan syncs."
+  },
+  "error": {
+    "title": "Groceries unavailable",
+    "body": "We could not load your grocery list. Try again once you are online."
+  }
+}

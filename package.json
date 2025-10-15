@@ -1,0 +1,18 @@
+﻿{
+    "name":  "ai-health-platform",
+    "version":  "0.1.0",
+    "private":  true,
+    "workspaces":  [
+                       "apps/*",
+                       "packages/*"
+                   ],
+    "scripts":  {
+                    "dev:mobile":  "yarn workspace @ai-health/mobile dev",
+                    "lint":  "turbo run lint",
+                    "test":  "turbo run test",
+                    "verify:api-client":  "yarn workspace @ai-health/api-client run generate \u0026\u0026 git diff --quiet --exit-code packages/api-client/src/types.gen.ts"
+                },
+    "devDependencies":  {
+                            "turbo":  "^2.0.6"
+                        }
+}

@@ -1,0 +1,143 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ai-nutritionist-config
+  namespace: ai-nutritionist
+data:
+  # Application Configuration
+  PYTHONPATH: "/app/src"
+  AWS_DEFAULT_REGION: "us-east-1"
+  ENVIRONMENT: "production"
+  
+  # Service URLs
+  NUTRITION_SERVICE_URL: "http://nutrition-service:8080"
+  AI_COACH_SERVICE_URL: "http://ai-coach-service:8080"
+  HEALTH_TRACKING_SERVICE_URL: "http://health-tracking-service:8080"
+  MESSAGING_SERVICE_URL: "http://messaging-service:8080"
+  PAYMENT_SERVICE_URL: "http://payment-service:8080"
+  
+  # Redis Configuration
+  REDIS_HOST: "redis-service"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  
+  # DynamoDB Configuration
+  DYNAMODB_ENDPOINT: "http://dynamodb-local:8000"
+  DYNAMODB_REGION: "us-east-1"
+  
+  # Monitoring Configuration
+  PROMETHEUS_ENABLED: "true"
+  JAEGER_ENABLED: "true"
+  LOG_LEVEL: "INFO"
+  
+  # Performance Configuration
+  CACHE_TTL: "3600"
+  MAX_CONNECTIONS: "100"
+  REQUEST_TIMEOUT: "30"
+  
+  # Feature Flags
+  FEATURE_AI_OPTIMIZATION: "true"
+  FEATURE_ADVANCED_CACHING: "true"
+  FEATURE_MULTI_MODEL: "true"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: prometheus-config
+  namespace: ai-nutritionist
+data:
+  prometheus.yml: |
+    global:
+      scrape_interval: 15s
+      evaluation_interval: 15s
+    
+    rule_files:
+      - "/etc/prometheus/rules/*.yml"
+    
+    scrape_configs:
+      - job_name: 'kubernetes-apiservers'
+        kubernetes_sd_configs:
+        - role: endpoints
+        scheme: https
+        tls_config:
+          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_namespace, __meta_kubernetes_service_name, __meta_kubernetes_endpoint_port_name]
+          action: keep
+          regex: default;kubernetes;https
+      
+      - job_name: 'ai-nutritionist-services'
+        kubernetes_sd_configs:
+        - role: pod
+          namespaces:
+            names:
+            - ai-nutritionist
+        relabel_configs:
+        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_scrape]
+          action: keep
+          regex: true
+        - source_labels: [__meta_kubernetes_pod_annotation_prometheus_io_path]
+          action: replace
+          target_label: __metrics_path__
+          regex: (.+)
+        - source_labels: [__address__, __meta_kubernetes_pod_annotation_prometheus_io_port]
+          action: replace
+          regex: ([^:]+)(?::\d+)?;(\d+)
+          replacement: $1:$2
+          target_label: __address__
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboards
+  namespace: ai-nutritionist
+data:
+  ai-nutritionist-dashboard.json: |
+    {
+      "dashboard": {
+        "id": null,
+        "title": "AI Nutritionist Platform",
+        "tags": ["ai-nutritionist"],
+        "timezone": "browser",
+        "panels": [
+          {
+            "title": "Request Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "sum(rate(http_requests_total{namespace=\"ai-nutritionist\"}[5m])) by (service)",
+                "legendFormat": "{{service}}"
+              }
+            ]
+          },
+          {
+            "title": "Response Time",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket{namespace=\"ai-nutritionist\"}[5m])) by (le, service))",
+                "legendFormat": "95th percentile - {{service}}"
+              }
+            ]
+          },
+          {
+            "title": "Error Rate",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "sum(rate(http_requests_total{namespace=\"ai-nutritionist\",status=~\"5..\"}[5m])) by (service) / sum(rate(http_requests_total{namespace=\"ai-nutritionist\"}[5m])) by (service)",
+                "legendFormat": "Error Rate - {{service}}"
+              }
+            ]
+          }
+        ],
+        "time": {
+          "from": "now-1h",
+          "to": "now"
+        },
+        "refresh": "5s"
+      }
+    }

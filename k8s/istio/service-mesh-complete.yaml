@@ -1,0 +1,610 @@
+# AI Nutritionist Complete Service Mesh Configuration
+# Enhanced Istio configuration with traffic management, security, and observability
+
+---
+# Enhanced Istio Operator with additional features
+apiVersion: install.istio.io/v1alpha1
+kind: IstioOperator
+metadata:
+  name: ai-nutritionist-istio-enhanced
+  namespace: istio-system
+spec:
+  values:
+    global:
+      meshID: ai-nutritionist-mesh
+      meshExpansion:
+        enabled: true
+      network: ai-nutritionist-network
+      hub: docker.io/istio
+      tag: 1.20.0
+      proxy:
+        # Enhanced proxy configuration
+        holdApplicationUntilProxyStarts: true
+        includeIPRanges: "*"
+        excludeIPRanges: ""
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 2000m
+            memory: 1Gi
+      # Global telemetry configuration
+      defaultConfig:
+        proxyStatsMatcher:
+          inclusionRegexps:
+          - ".*circuit_breakers.*"
+          - ".*upstream_rq_retry.*"
+          - ".*upstream_rq_pending.*"
+          - ".*_cx_.*"
+        discoveryRefreshDelay: 10s
+        configPath: "/etc/istio/proxy"
+        binaryPath: "/usr/local/bin/envoy"
+        serviceCluster: istio-proxy
+        drainDuration: 45s
+        parentShutdownDuration: 60s
+        proxyAdminPort: 15000
+        statusPort: 15020
+        concurrency: 2
+    pilot:
+      traceSampling: 10.0
+      env:
+        EXTERNAL_ISTIOD: false
+        PILOT_ENABLE_WORKLOAD_ENTRY_AUTOREGISTRATION: true
+        PILOT_ENABLE_CROSS_CLUSTER_WORKLOAD_ENTRY: true
+        PILOT_ENABLE_STATUS: true
+        PILOT_ENABLE_ALPHA_GATEWAY_API: true
+      k8s:
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: 1000m
+            memory: 1Gi
+    telemetry:
+      v2:
+        enabled: true
+        prometheus:
+          configOverride:
+            metric_relabeling_configs:
+            - source_labels: [__name__]
+              regex: 'istio_.*'
+              target_label: __tmp_istio_metric
+            - source_labels: [__tmp_istio_metric, __name__]
+              regex: '(.*);.*'
+              target_label: __name__
+              replacement: '${1}'
+            disable_host_header_fallback: false
+            gateway:
+              disable_host_header_fallback: false
+  components:
+    pilot:
+      k8s:
+        hpaSpec:
+          maxReplicas: 10
+          minReplicas: 3
+          metrics:
+          - type: Resource
+            resource:
+              name: cpu
+              target:
+                type: Utilization
+                averageUtilization: 80
+          - type: Resource
+            resource:
+              name: memory
+              target:
+                type: Utilization
+                averageUtilization: 80
+    ingressGateways:
+    - name: istio-ingressgateway
+      enabled: true
+      k8s:
+        resources:
+          requests:
+            cpu: 200m
+            memory: 256Mi
+          limits:
+            cpu: 2000m
+            memory: 1Gi
+        hpaSpec:
+          maxReplicas: 20
+          minReplicas: 3
+          metrics:
+          - type: Resource
+            resource:
+              name: cpu
+              target:
+                type: Utilization
+                averageUtilization: 70
+        service:
+          type: LoadBalancer
+          annotations:
+            service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+            service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+          ports:
+          - port: 15021
+            targetPort: 15021
+            name: status-port
+          - port: 80
+            targetPort: 8080
+            name: http2
+          - port: 443
+            targetPort: 8443
+            name: https
+          - port: 15443
+            targetPort: 15443
+            name: tls
+    egressGateways:
+    - name: istio-egressgateway
+      enabled: true
+      k8s:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+          limits:
+            cpu: 1000m
+            memory: 512Mi
+        hpaSpec:
+          maxReplicas: 5
+          minReplicas: 2
+
+---
+# Enhanced Gateway Configuration
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: ai-nutritionist-gateway-enhanced
+  namespace: ai-nutritionist
+  labels:
+    app: ai-nutritionist
+    version: v1
+spec:
+  selector:
+    istio: ingressgateway
+  servers:
+  - port:
+      number: 80
+      name: http
+      protocol: HTTP
+    hosts:
+    - "*.ai-nutritionist.com"
+    - ai-nutritionist.com
+    - api.ai-nutritionist.com
+    - admin.ai-nutritionist.com
+    - staging.ai-nutritionist.com
+    tls:
+      httpsRedirect: true
+  - port:
+      number: 443
+      name: https
+      protocol: HTTPS
+    tls:
+      mode: SIMPLE
+      credentialName: ai-nutritionist-tls
+    hosts:
+    - "*.ai-nutritionist.com"
+    - ai-nutritionist.com
+    - api.ai-nutritionist.com
+    - admin.ai-nutritionist.com
+    - staging.ai-nutritionist.com
+
+---
+# Advanced Virtual Service with Traffic Management
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: ai-nutritionist-traffic-management
+  namespace: ai-nutritionist
+  labels:
+    app: ai-nutritionist
+spec:
+  hosts:
+  - ai-nutritionist.com
+  - api.ai-nutritionist.com
+  gateways:
+  - ai-nutritionist-gateway-enhanced
+  http:
+  # Nutrition Service with Canary Deployment
+  - match:
+    - uri:
+        prefix: /api/v1/nutrition
+    - headers:
+        canary:
+          exact: "true"
+    route:
+    - destination:
+        host: nutrition-service.ai-nutritionist.svc.cluster.local
+        port:
+          number: 8080
+        subset: canary
+      weight: 100
+    fault:
+      delay:
+        percentage:
+          value: 0.1
+        fixedDelay: 100ms
+    retries:
+      attempts: 3
+      perTryTimeout: 30s
+      retryOn: 5xx,reset,connect-failure,refused-stream
+    timeout: 60s
+    headers:
+      request:
+        add:
+          x-canary-version: "true"
+  # Nutrition Service - Production Traffic with A/B Testing
+  - match:
+    - uri:
+        prefix: /api/v1/nutrition
+    route:
+    - destination:
+        host: nutrition-service.ai-nutritionist.svc.cluster.local
+        port:
+          number: 8080
+        subset: v1
+      weight: 90
+    - destination:
+        host: nutrition-service.ai-nutritionist.svc.cluster.local
+        port:
+          number: 8080
+        subset: v2
+      weight: 10
+    fault:
+      delay:
+        percentage:
+          value: 0.1
+        fixedDelay: 5s
+    retries:
+      attempts: 3
+      perTryTimeout: 30s
+      retryOn: 5xx,reset,connect-failure,refused-stream
+    timeout: 60s
+    headers:
+      request:
+        add:
+          x-trace-service: nutrition
+          x-request-id: "%REQ(x-request-id)%"
+  # AI Coach Service with Blue-Green Deployment
+  - match:
+    - uri:
+        prefix: /api/v1/ai-coach
+    - headers:
+        deployment:
+          exact: "green"
+    route:
+    - destination:
+        host: ai-coach-service.ai-nutritionist.svc.cluster.local
+        port:
+          number: 8080
+        subset: green
+      weight: 100
+    retries:
+      attempts: 3
+      perTryTimeout: 60s
+      retryOn: 5xx,reset,connect-failure,refused-stream
+    timeout: 120s
+  # AI Coach Service - Blue (Production)
+  - match:
+    - uri:
+        prefix: /api/v1/ai-coach
+    route:
+    - destination:
+        host: ai-coach-service.ai-nutritionist.svc.cluster.local
+        port:
+          number: 8080
+        subset: blue
+      weight: 100
+    retries:
+      attempts: 3
+      perTryTimeout: 60s
+      retryOn: 5xx,reset,connect-failure,refused-stream
+    timeout: 120s
+  # Health Tracking Service
+  - match:
+    - uri:
+        prefix: /api/v1/health
+    route:
+    - destination:
+        host: health-tracking-service.ai-nutritionist.svc.cluster.local
+        port:
+          number: 8080
+    retries:
+      attempts: 2
+      perTryTimeout: 30s
+    timeout: 45s
+  # Messaging Service with Rate Limiting
+  - match:
+    - uri:
+        prefix: /api/v1/messaging
+    route:
+    - destination:
+        host: messaging-service.ai-nutritionist.svc.cluster.local
+        port:
+          number: 8080
+    retries:
+      attempts: 3
+      perTryTimeout: 30s
+    timeout: 60s
+  # Payment Service with Enhanced Security
+  - match:
+    - uri:
+        prefix: /api/v1/payments
+    route:
+    - destination:
+        host: payment-service.ai-nutritionist.svc.cluster.local
+        port:
+          number: 8080
+    retries:
+      attempts: 1
+      perTryTimeout: 30s
+    timeout: 45s
+    headers:
+      request:
+        add:
+          x-payment-service: "true"
+  # Web Application
+  - match:
+    - headers:
+        host:
+          regex: "^(www\\.)?ai-nutritionist\\.com$"
+    route:
+    - destination:
+        host: web-app.ai-nutritionist.svc.cluster.local
+        port:
+          number: 80
+    headers:
+      response:
+        add:
+          x-served-by: istio-gateway
+
+---
+# Advanced Destination Rules with Traffic Policies
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: nutrition-service-advanced
+  namespace: ai-nutritionist
+spec:
+  host: nutrition-service.ai-nutritionist.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+    connectionPool:
+      tcp:
+        maxConnections: 200
+        connectTimeout: 30s
+        tcpKeepalive:
+          time: 7200s
+          interval: 75s
+      http:
+        http1MaxPendingRequests: 100
+        http2MaxRequests: 200
+        maxRequestsPerConnection: 10
+        maxRetries: 3
+        consecutiveGatewayErrors: 5
+        interval: 30s
+        baseEjectionTime: 30s
+        maxEjectionPercent: 50
+    loadBalancer:
+      simple: LEAST_CONN
+      consistentHash:
+        httpHeaderName: "x-user-id"
+    outlierDetection:
+      consecutiveGatewayErrors: 5
+      consecutive5xxErrors: 5
+      interval: 30s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 50
+      minHealthPercent: 50
+      splitExternalLocalOriginErrors: true
+  subsets:
+  - name: v1
+    labels:
+      version: v1
+  - name: v2
+    labels:
+      version: v2
+  - name: canary
+    labels:
+      version: canary
+    trafficPolicy:
+      connectionPool:
+        tcp:
+          maxConnections: 50
+        http:
+          http1MaxPendingRequests: 25
+
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: ai-coach-service-advanced
+  namespace: ai-nutritionist
+spec:
+  host: ai-coach-service.ai-nutritionist.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+    connectionPool:
+      tcp:
+        maxConnections: 100
+        connectTimeout: 30s
+      http:
+        http1MaxPendingRequests: 50
+        http2MaxRequests: 100
+        maxRequestsPerConnection: 5
+        maxRetries: 2
+        consecutiveGatewayErrors: 3
+        interval: 30s
+        baseEjectionTime: 30s
+        maxEjectionPercent: 30
+    outlierDetection:
+      consecutiveGatewayErrors: 3
+      consecutive5xxErrors: 3
+      interval: 15s
+      baseEjectionTime: 15s
+      maxEjectionPercent: 30
+      minHealthPercent: 70
+  subsets:
+  - name: blue
+    labels:
+      version: blue
+  - name: green
+    labels:
+      version: green
+    trafficPolicy:
+      connectionPool:
+        tcp:
+          maxConnections: 25
+        http:
+          http1MaxPendingRequests: 10
+
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: messaging-service-advanced
+  namespace: ai-nutritionist
+spec:
+  host: messaging-service.ai-nutritionist.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+    connectionPool:
+      tcp:
+        maxConnections: 150
+      http:
+        http1MaxPendingRequests: 75
+        http2MaxRequests: 150
+        maxRequestsPerConnection: 20
+    loadBalancer:
+      simple: ROUND_ROBIN
+
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: payment-service-advanced
+  namespace: ai-nutritionist
+spec:
+  host: payment-service.ai-nutritionist.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+    connectionPool:
+      tcp:
+        maxConnections: 50
+        connectTimeout: 10s
+      http:
+        http1MaxPendingRequests: 25
+        http2MaxRequests: 50
+        maxRequestsPerConnection: 1
+        maxRetries: 1
+    outlierDetection:
+      consecutiveGatewayErrors: 2
+      consecutive5xxErrors: 2
+      interval: 10s
+      baseEjectionTime: 30s
+      maxEjectionPercent: 25
+      minHealthPercent: 75
+
+---
+apiVersion: networking.istio.io/v1beta1
+kind: DestinationRule
+metadata:
+  name: health-tracking-service-advanced
+  namespace: ai-nutritionist
+spec:
+  host: health-tracking-service.ai-nutritionist.svc.cluster.local
+  trafficPolicy:
+    tls:
+      mode: ISTIO_MUTUAL
+    connectionPool:
+      tcp:
+        maxConnections: 100
+      http:
+        http1MaxPendingRequests: 50
+        http2MaxRequests: 100
+    loadBalancer:
+      simple: LEAST_CONN
+
+---
+# Service Entry for External Dependencies
+apiVersion: networking.istio.io/v1beta1
+kind: ServiceEntry
+metadata:
+  name: external-apis
+  namespace: ai-nutritionist
+spec:
+  hosts:
+  - bedrock.us-east-1.amazonaws.com
+  - dynamodb.us-east-1.amazonaws.com
+  - ssm.us-east-1.amazonaws.com
+  - sns.us-east-1.amazonaws.com
+  - sqs.us-east-1.amazonaws.com
+  ports:
+  - number: 443
+    name: https
+    protocol: HTTPS
+  location: MESH_EXTERNAL
+  resolution: DNS
+
+---
+# Egress Gateway for External Services
+apiVersion: networking.istio.io/v1beta1
+kind: Gateway
+metadata:
+  name: aws-services-gateway
+  namespace: ai-nutritionist
+spec:
+  selector:
+    istio: egressgateway
+  servers:
+  - port:
+      number: 443
+      name: tls
+      protocol: TLS
+    hosts:
+    - bedrock.us-east-1.amazonaws.com
+    - dynamodb.us-east-1.amazonaws.com
+    - ssm.us-east-1.amazonaws.com
+    - sns.us-east-1.amazonaws.com
+    - sqs.us-east-1.amazonaws.com
+    tls:
+      mode: PASSTHROUGH
+
+---
+# Virtual Service for External AWS Services
+apiVersion: networking.istio.io/v1beta1
+kind: VirtualService
+metadata:
+  name: aws-services-vs
+  namespace: ai-nutritionist
+spec:
+  hosts:
+  - bedrock.us-east-1.amazonaws.com
+  - dynamodb.us-east-1.amazonaws.com
+  - ssm.us-east-1.amazonaws.com
+  - sns.us-east-1.amazonaws.com
+  - sqs.us-east-1.amazonaws.com
+  gateways:
+  - aws-services-gateway
+  - mesh
+  tls:
+  - match:
+    - port: 443
+      sniHosts:
+      - bedrock.us-east-1.amazonaws.com
+      - dynamodb.us-east-1.amazonaws.com
+      - ssm.us-east-1.amazonaws.com
+      - sns.us-east-1.amazonaws.com
+      - sqs.us-east-1.amazonaws.com
+    route:
+    - destination:
+        host: bedrock.us-east-1.amazonaws.com
+        port:
+          number: 443
+      weight: 100

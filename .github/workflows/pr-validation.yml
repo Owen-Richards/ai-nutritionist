@@ -1,0 +1,361 @@
+name: 🔍 Pull Request Validation
+
+on:
+  pull_request:
+    branches: [main, develop]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+env:
+  NODE_VERSION: '20'
+  PYTHON_VERSION: '3.13'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  changes:
+    name: 📋 Detect Changes
+    runs-on: ubuntu-latest
+    outputs:
+      python: ${{ steps.changes.outputs.python }}
+      node: ${{ steps.changes.outputs.node }}
+      docker: ${{ steps.changes.outputs.docker }}
+      infrastructure: ${{ steps.changes.outputs.infrastructure }}
+      docs: ${{ steps.changes.outputs.docs }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect file changes
+        uses: dorny/paths-filter@v2
+        id: changes
+        with:
+          filters: |
+            python:
+              - 'src/**'
+              - 'tests/**'
+              - 'requirements*.txt'
+              - 'pyproject.toml'
+              - 'setup.py'
+            node:
+              - 'apps/**'
+              - 'packages/**'
+              - 'package.json'
+              - 'yarn.lock'
+              - 'turbo.json'
+              - 'tsconfig*.json'
+            docker:
+              - 'Dockerfile*'
+              - 'docker-compose*.yml'
+            infrastructure:
+              - 'infrastructure/**'
+              - 'template.yaml'
+              - 'samconfig.toml'
+            docs:
+              - 'docs/**'
+              - '*.md'
+
+  python-validation:
+    name: 🐍 Python Validation
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12', '3.13']
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Create virtual environment
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          echo "VIRTUAL_ENV=$VIRTUAL_ENV" >> $GITHUB_ENV
+          echo "$VIRTUAL_ENV/bin" >> $GITHUB_PATH
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install -r requirements-dev.txt
+
+      - name: Lint with ruff
+        run: |
+          ruff check src/ tests/
+          ruff format --check src/ tests/
+
+      - name: Type check with mypy
+        run: |
+          mypy src/
+
+      - name: Security scan with bandit
+        run: |
+          bandit -r src/ -f json -o bandit-report.json
+          bandit -r src/
+
+      - name: Run unit tests
+        run: |
+          pytest tests/unit/ -v --cov=src --cov-report=xml --cov-report=html
+
+      - name: Run integration tests
+        run: |
+          pytest tests/integration/ -v
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./coverage.xml
+          flags: python
+          name: python-${{ matrix.python-version }}
+
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: python-test-results-${{ matrix.python-version }}
+          path: |
+            htmlcov/
+            bandit-report.json
+            pytest-report.xml
+
+  node-validation:
+    name: 📦 Node.js Validation
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.node == 'true'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Lint code
+        run: yarn lint
+
+      - name: Type check
+        run: yarn turbo run type-check
+
+      - name: Run tests
+        run: yarn test --coverage
+
+      - name: Build applications
+        run: yarn turbo run build
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        with:
+          directory: ./coverage
+          flags: javascript
+          name: node-validation
+
+  security-scan:
+    name: 🔒 Security Scanning
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.python == 'true' || needs.changes.outputs.node == 'true'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+      - name: Python dependency check
+        if: needs.changes.outputs.python == 'true'
+        run: |
+          pip install safety
+          safety check --json --output safety-report.json || true
+          safety check
+
+      - name: Node.js dependency audit
+        if: needs.changes.outputs.node == 'true'
+        run: |
+          yarn audit --json > yarn-audit.json || true
+          yarn audit
+
+      - name: Upload security artifacts
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: security-reports
+          path: |
+            trivy-results.sarif
+            safety-report.json
+            yarn-audit.json
+
+  docker-validation:
+    name: 🐳 Docker Validation
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.docker == 'true' || needs.changes.outputs.python == 'true'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: false
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.number }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Run Hadolint
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+
+      - name: Test Docker image
+        run: |
+          docker run --rm ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:pr-${{ github.event.number }} python -c "import src; print('Image validation successful')"
+
+  performance-tests:
+    name: ⚡ Performance Testing
+    runs-on: ubuntu-latest
+    needs: [python-validation]
+    if: needs.changes.outputs.python == 'true'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install pytest-benchmark locust
+
+      - name: Run performance benchmarks
+        run: |
+          pytest tests/performance/ --benchmark-only --benchmark-json=benchmark-results.json
+
+      - name: Performance regression check
+        run: |
+          python scripts/check_performance_regression.py benchmark-results.json
+
+      - name: Upload performance results
+        uses: actions/upload-artifact@v3
+        with:
+          name: performance-results
+          path: benchmark-results.json
+
+  accessibility-tests:
+    name: ♿ Accessibility Testing
+    runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.node == 'true'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build web app
+        run: yarn workspace @ai-health/web build
+
+      - name: Run accessibility tests
+        run: yarn workspace @ai-health/web test:a11y
+
+      - name: Upload accessibility results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: accessibility-results
+          path: accessibility/test-results/
+
+  validation-summary:
+    name: ✅ Validation Summary
+    runs-on: ubuntu-latest
+    needs: [python-validation, node-validation, security-scan, docker-validation, performance-tests, accessibility-tests]
+    if: always()
+    
+    steps:
+      - name: Check validation results
+        run: |
+          echo "Python validation: ${{ needs.python-validation.result }}"
+          echo "Node validation: ${{ needs.node-validation.result }}"
+          echo "Security scan: ${{ needs.security-scan.result }}"
+          echo "Docker validation: ${{ needs.docker-validation.result }}"
+          echo "Performance tests: ${{ needs.performance-tests.result }}"
+          echo "Accessibility tests: ${{ needs.accessibility-tests.result }}"
+          
+          if [[ "${{ needs.python-validation.result }}" == "failure" || 
+                "${{ needs.node-validation.result }}" == "failure" || 
+                "${{ needs.security-scan.result }}" == "failure" || 
+                "${{ needs.docker-validation.result }}" == "failure" ]]; then
+            echo "❌ Validation failed"
+            exit 1
+          else
+            echo "✅ All validations passed"
+          fi
+
+      - name: Update PR status
+        if: always()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const { data: pullRequest } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+            });
+            
+            const status = '${{ needs.python-validation.result }}' === 'success' && 
+                          '${{ needs.node-validation.result }}' === 'success' && 
+                          '${{ needs.security-scan.result }}' === 'success' && 
+                          '${{ needs.docker-validation.result }}' === 'success' ? 
+                          '✅ Ready for review' : '❌ Needs attention';
+            
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: `## PR Validation Results\n\n${status}\n\nSee the [workflow run](${context.payload.workflow_run?.html_url}) for details.`
+            });

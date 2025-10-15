@@ -1,0 +1,169 @@
+{
+  "metadata": {
+    "generated": "2025-10-14",
+    "approval_required": true,
+    "safety_level": "conservative"
+  },
+  "deletion_plan": {
+    "phase_1_safe_deletions": {
+      "cleanup_documentation": [
+        {
+          "file": "docs/SCRIPT_CLEANUP_SUMMARY.md",
+          "reason": "Historical cleanup record - no longer needed",
+          "confidence": "high",
+          "references": 0,
+          "approval_gate": "TEAM_REVIEW",
+          "action": "Move to docs/archive/cleanup/ (not delete)",
+          "impact": "none"
+        },
+        {
+          "file": "infrastructure/CLEANUP_SUMMARY.md",
+          "reason": "Duplicate cleanup documentation",
+          "confidence": "high",
+          "references": 0,
+          "approval_gate": "TEAM_REVIEW",
+          "action": "Move to docs/archive/cleanup/ (not delete)",
+          "impact": "none"
+        }
+      ]
+    },
+    "phase_2_assessment_required": {
+      "compliance_automation": {
+        "path": "compliance-automation/",
+        "size": "~3000 lines + dependencies",
+        "reason": "Standalone framework not integrated with main codebase",
+        "confidence": "high",
+        "references": 0,
+        "approval_gate": "TEAM_DECISION",
+        "options": [
+          "DELETE - if accidentally included",
+          "ARCHIVE - if future reference needed",
+          "INTEGRATE - if planned for use"
+        ],
+        "recommended_action": "DELETE or move to separate repository",
+        "prerequisite": "Confirm purpose and future plans with team",
+        "impact": "none_if_not_used"
+      }
+    },
+    "phase_3_unused_imports": {
+      "status": "AUTOMATED_CLEANUP",
+      "tool": "autoflake or ruff",
+      "command": "ruff check --select F401 --fix src/",
+      "estimated_count": "10-30 files",
+      "approval_gate": "AUTOMATED_PR",
+      "impact": "none",
+      "validation": "All tests must pass after cleanup"
+    }
+  },
+  "do_not_delete": {
+    "test_files": {
+      "pattern": "tests/**/*",
+      "reason": "All tests required for validation"
+    },
+    "infrastructure": {
+      "pattern": "infrastructure/**/*",
+      "reason": "Production infrastructure code"
+    },
+    "active_services": {
+      "pattern": "src/services/**/*",
+      "reason": "Active business logic"
+    },
+    "compliance_security": {
+      "files": [
+        "SECURITY_FINAL_REPORT.md",
+        "COMPREHENSIVE_SECURITY_TESTING_COMPLETE.md",
+        "docs/MONITORING_USAGE_GUIDE.md"
+      ],
+      "reason": "Required for compliance and security audits"
+    },
+    "implementation_records": {
+      "pattern": "*_COMPLETE.md",
+      "reason": "Feature completion tracking - move to docs/ instead of delete"
+    }
+  },
+  "approval_gates": {
+    "automated": {
+      "description": "Automated cleanup with CI validation",
+      "applies_to": ["unused imports", "whitespace", "formatting"],
+      "requirements": [
+        "All tests pass",
+        "No type errors",
+        "Terraform validates"
+      ]
+    },
+    "team_review": {
+      "description": "Team review required before action",
+      "applies_to": ["documentation moves", "file archival"],
+      "requirements": [
+        "PR review by 1+ team member",
+        "Approval in chat/issue"
+      ]
+    },
+    "team_decision": {
+      "description": "Team decision required before action",
+      "applies_to": ["large module deletion", "compliance-automation assessment"],
+      "requirements": [
+        "Team meeting discussion",
+        "Written approval from tech lead",
+        "Document decision rationale"
+      ]
+    }
+  },
+  "safety_checklist": {
+    "before_deletion": [
+      "Search for all references (rg intensive search)",
+      "Check import statements",
+      "Verify not referenced in CI/CD",
+      "Confirm not referenced in infrastructure",
+      "Check for hidden dependencies (env vars, config files)",
+      "Verify tests don't import it",
+      "Create backup if any uncertainty"
+    ],
+    "after_deletion": [
+      "Run full test suite",
+      "Run mypy/type checking",
+      "Validate infrastructure (terraform validate)",
+      "Check CI/CD pipelines execute",
+      "Verify no broken imports",
+      "Check coverage hasn't dropped"
+    ]
+  },
+  "recommended_sequence": {
+    "step_1": {
+      "action": "Archive cleanup documentation",
+      "files": [
+        "docs/SCRIPT_CLEANUP_SUMMARY.md",
+        "infrastructure/CLEANUP_SUMMARY.md"
+      ],
+      "command": "git mv to docs/archive/cleanup/",
+      "risk": "low",
+      "approval": "team_review"
+    },
+    "step_2": {
+      "action": "Assess compliance-automation module",
+      "task": "Team meeting to decide fate",
+      "risk": "medium",
+      "approval": "team_decision"
+    },
+    "step_3": {
+      "action": "Clean unused imports automatically",
+      "command": "ruff check --select F401 --fix src/",
+      "risk": "low",
+      "approval": "automated_with_tests"
+    },
+    "step_4": {
+      "action": "Reorganize documentation",
+      "task": "Move architecture and security docs to subdirectories",
+      "risk": "low",
+      "approval": "team_review"
+    }
+  },
+  "summary": {
+    "files_to_delete": 0,
+    "files_to_archive": 2,
+    "modules_to_assess": 1,
+    "automated_cleanup_items": 1,
+    "total_risk": "low",
+    "validation_required": true
+  }
+}

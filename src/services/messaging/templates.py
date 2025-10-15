@@ -7,7 +7,10 @@ Enhanced with multi-goal support and custom goal handling.
 """
 
 import logging
+import os
+from urllib.parse import parse_qsl, urlencode, urljoin, urlparse
 from typing import Dict, List, Any, Optional
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from datetime import datetime
 import re
 
@@ -723,3 +726,228 @@ This helps me make better trade-offs in your meal plans! 🎯"""
         else:
             formatted_goals = ", ".join(high_priority_goals)
             return f"Perfect! I'll give top priority to: {formatted_goals} 🎯"
+
+
+# ---------------------------------------------------------------------------
+# Unified orchestration helpers
+# ---------------------------------------------------------------------------
+
+
+def build_deep_link(path: str, channel: str, journey: str, locale: str) -> str:
+    """Build a deep link with standardized UTM parameters."""
+    base_url = os.getenv("DEEP_LINK_BASE_URL", "https://ai.health")
+    normalized_path = path if path.startswith("/") else f"/{path}"
+    absolute = urljoin(base_url, normalized_path)
+    parsed = urlparse(absolute)
+    query_params = dict(parse_qsl(parsed.query, keep_blank_values=True))
+    query_params.update({
+        "utm_source": channel,
+        "utm_campaign": journey,
+        "locale": locale,
+    })
+    updated = parsed._replace(query=urlencode(query_params))
+    return updated.geturl()
+
+
+class UnifiedMessageRenderer:
+    """Render channel-specific messaging for NBA decisions."""
+
+    def render(
+        self,
+        decision: Dict[str, Any],
+        *,
+        channel: str,
+        locale: str,
+        timezone: str,
+    ) -> Dict[str, Any]:
+        metadata = dict(decision.get("metadata", {}))
+        metadata.setdefault("journey", decision.get("journey"))
+        deep_link = decision.get("deep_link")
+        primary = decision.get("primary_message", "")
+        cta_label = decision.get("cta_label", "")
+        is_rtl = self._is_rtl(locale)
+        tz = self._resolve_timezone(timezone)
+        local_date = self._format_local_date(locale, tz)
+        builder = {
+            "sms": self._render_sms,
+            "whatsapp": self._render_whatsapp,
+            "app": self._render_app,
+            "web": self._render_web,
+        }
+        renderer = builder.get(channel, self._render_fallback)
+        text = renderer(primary, cta_label, deep_link, locale=locale, metadata=metadata, date_line=local_date)
+        render_metadata = {
+            "locale": locale,
+            "timezone": timezone,
+            "rtl": is_rtl,
+            "aria_label": f"{cta_label} action",
+        }
+        return {
+            "channel": channel,
+            "text": text,
+            "primary_message": primary,
+            "cta": {"label": cta_label, "deep_link": deep_link},
+            "metadata": {**metadata, "render": render_metadata},
+        }
+
+    def _render_sms(
+        self,
+        message: str,
+        label: str,
+        link: str,
+        *,
+        locale: str,
+        metadata: Dict[str, Any],
+        date_line: str,
+    ) -> str:
+        opt_out = " Reply STOP to opt out"
+        base = f"{message} {label}: {link}"
+        candidate = f"{base}{opt_out}"
+        if len(candidate) <= 160:
+            return candidate
+        available = max(20, 160 - len(opt_out) - len(label) - len(link) - 2)
+        truncated = message[:available].rstrip()
+        if len(truncated) < len(message):
+            truncated = truncated.rstrip("., !") + "…"
+        return f"{truncated} {label}: {link}{opt_out}"
+
+    def _render_whatsapp(
+        self,
+        message: str,
+        label: str,
+        link: str,
+        *,
+        locale: str,
+        metadata: Dict[str, Any],
+        date_line: str,
+    ) -> str:
+        bullets = _WHATSAPP_BULLETS.get(metadata.get("journey"), _WHATSAPP_BULLETS.get("default"))
+        localized = bullets.get(self._language(locale), bullets.get("en"))
+        lines = [message]
+        lines.extend(f"• {item}" for item in localized)
+        lines.append(f"{label}: {link}")
+        return "
+".join(lines)
+
+    def _render_app(
+        self,
+        message: str,
+        label: str,
+        link: str,
+        *,
+        locale: str,
+        metadata: Dict[str, Any],
+        date_line: str,
+    ) -> str:
+        return f"{date_line}
+{message}
+{label} → {link}"
+
+    def _render_web(
+        self,
+        message: str,
+        label: str,
+        link: str,
+        *,
+        locale: str,
+        metadata: Dict[str, Any],
+        date_line: str,
+    ) -> str:
+        return (
+            f"{message}
+Primary action: {label} (link: {link})
+"
+            f"Screen reader label: {label} button"
+        )
+
+    def _render_fallback(
+        self,
+        message: str,
+        label: str,
+        link: str,
+        *,
+        locale: str,
+        metadata: Dict[str, Any],
+        date_line: str,
+    ) -> str:
+        return f"{message} {label}: {link}"
+
+    def _resolve_timezone(self, name: str) -> ZoneInfo:
+        try:
+            return ZoneInfo(name)
+        except (ZoneInfoNotFoundError, ValueError):
+            return ZoneInfo("UTC")
+
+    def _format_local_date(self, locale: str, tz: ZoneInfo) -> str:
+        now = datetime.now(tz)
+        lang = self._language(locale)
+        region = locale.split("-")[1].upper() if "-" in locale else ""
+        if region == "US" or (lang == "en" and region in {"US", "CA"}):
+            pattern = "%b %d"
+        else:
+            pattern = "%d %b"
+        return now.strftime(pattern)
+
+    @staticmethod
+    def _language(locale: str) -> str:
+        return (locale or "en").split("-")[0].lower()
+
+    @staticmethod
+    def _is_rtl(locale: str) -> bool:
+        return UnifiedMessageRenderer._language(locale) in {"ar", "he", "fa"}
+
+
+class MessageTemplatesService:
+    """Helper to render orchestration responses per channel."""
+
+    def __init__(
+        self,
+        renderer: Optional[UnifiedMessageRenderer] = None,
+        base: Optional[NutritionMessagingService] = None,
+    ) -> None:
+        self.renderer = renderer or UnifiedMessageRenderer()
+        self._base = base
+
+    def render_next_best_action(
+        self,
+        decision: Dict[str, Any],
+        *,
+        channel: str,
+        locale: str,
+        timezone: str,
+    ) -> Dict[str, Any]:
+        payload = self.renderer.render(decision, channel=channel, locale=locale, timezone=timezone)
+        payload.setdefault("metadata", {})["journey"] = decision.get("journey")
+        return payload
+
+    def __getattr__(self, item: str) -> Any:
+        if self._base and hasattr(self._base, item):
+            return getattr(self._base, item)
+        raise AttributeError(f"{self.__class__.__name__} has no attribute {item}")
+
+
+_WHATSAPP_BULLETS: Dict[str, Dict[str, List[str]]] = {
+    "quick_log": {
+        "en": ["2 taps to track", "Offline queue ready"],
+        "es": ["2 toques para registrar", "Funciona sin conexión"],
+        "fr": ["2 gestes pour suivre", "File d'attente hors ligne"],
+    },
+    "groceries": {
+        "en": ["Items grouped", "5 min to verify"],
+        "es": ["Artículos agrupados", "5 min para revisar"],
+        "fr": ["Articles groupés", "5 min pour vérifier"],
+    },
+    "smart_swaps": {
+        "en": ["Fits time & budget", "Tap once to replace"],
+        "es": ["Ajustado a tiempo y presupuesto", "Un toque para reemplazar"],
+        "fr": ["Respecte temps et budget", "Un appui pour remplacer"],
+    },
+    "recovery": {
+        "en": ["Small wins count", "Gentle restart"],
+        "es": ["Los pequeños logros cuentan", "Reinicio suave"],
+        "fr": ["Les petits succès comptent", "Reprise en douceur"],
+    },
+    "default": {
+        "en": ["Stay on track", "We've queued updates"],
+    },
+}

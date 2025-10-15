@@ -9,3 +9,6 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "src"
 if SRC_DIR.exists():
     sys.path.insert(0, str(SRC_DIR))
 
+# Import all fixtures to make them available to tests
+from tests.fixtures import *
+

@@ -1,0 +1,1038 @@
+{
+  "info": {
+    "name": "AI Nutritionist API",
+    "description": "Complete API collection for the AI Nutritionist platform",
+    "version": "2.1.0",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{api_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://api.ai-nutritionist.com/v1",
+      "type": "string"
+    },
+    {
+      "key": "api_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "user_123456",
+      "type": "string"
+    },
+    {
+      "key": "plan_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "meal_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Authentication",
+      "item": [
+        {
+          "name": "Initiate Login (SMS)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"channel\": \"sms\",\n  \"identifier\": \"+1234567890\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Start SMS authentication flow"
+          },
+          "response": []
+        },
+        {
+          "name": "Initiate Login (Email)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"channel\": \"email\",\n  \"identifier\": \"user@example.com\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Start email authentication flow"
+          },
+          "response": []
+        },
+        {
+          "name": "Verify Code",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.access_token) {",
+                  "        pm.collectionVariables.set('api_token', response.access_token);",
+                  "        pm.collectionVariables.set('user_id', response.user.user_id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"identifier\": \"+1234567890\",\n  \"code\": \"123456\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/verify",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "verify"]
+            },
+            "description": "Verify authentication code and get access token"
+          },
+          "response": []
+        },
+        {
+          "name": "Refresh Token",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.access_token) {",
+                  "        pm.collectionVariables.set('api_token', response.access_token);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"refresh_token\": \"{{refresh_token}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/refresh",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "refresh"]
+            },
+            "description": "Refresh expired access token"
+          },
+          "response": []
+        }
+      ],
+      "description": "Authentication endpoints for user login and token management"
+    },
+    {
+      "name": "Meal Planning",
+      "item": [
+        {
+          "name": "Generate Meal Plan",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const response = pm.response.json();",
+                  "    if (response.plan_id) {",
+                  "        pm.collectionVariables.set('plan_id', response.plan_id);",
+                  "    }",
+                  "    if (response.meals && response.meals.length > 0) {",
+                  "        pm.collectionVariables.set('meal_id', response.meals[0].meal_id);",
+                  "    }",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"{{user_id}}\",\n  \"preferences\": {\n    \"dietary_restrictions\": [\"vegetarian\", \"gluten_free\"],\n    \"cuisine_preferences\": [\"mediterranean\", \"asian\"],\n    \"budget_per_week\": 120.00,\n    \"servings\": 4,\n    \"prep_time_preference\": \"moderate\",\n    \"equipment_available\": [\"oven\", \"stovetop\", \"blender\"]\n  },\n  \"week_start\": \"2024-10-14\",\n  \"force_new\": false\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/plan/generate",
+              "host": ["{{base_url}}"],
+              "path": ["plan", "generate"]
+            },
+            "description": "Generate a personalized meal plan"
+          },
+          "response": []
+        },
+        {
+          "name": "Generate Quick Plan",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"{{user_id}}\",\n  \"preferences\": {\n    \"budget_per_week\": 80.00,\n    \"servings\": 2,\n    \"prep_time_preference\": \"quick\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/plan/generate",
+              "host": ["{{base_url}}"],
+              "path": ["plan", "generate"]
+            },
+            "description": "Generate a quick meal plan with minimal preferences"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Meal Plan",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/plan/{{plan_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["plan", "{{plan_id}}"]
+            },
+            "description": "Retrieve an existing meal plan by ID"
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Positive Feedback",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"{{user_id}}\",\n  \"plan_id\": \"{{plan_id}}\",\n  \"meal_id\": \"{{meal_id}}\",\n  \"rating\": 5,\n  \"emoji\": \"😋\",\n  \"comment\": \"Absolutely delicious! Perfect seasoning and easy to make.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/plan/{{plan_id}}/feedback",
+              "host": ["{{base_url}}"],
+              "path": ["plan", "{{plan_id}}", "feedback"]
+            },
+            "description": "Submit positive feedback for a meal"
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Critical Feedback",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"{{user_id}}\",\n  \"plan_id\": \"{{plan_id}}\",\n  \"meal_id\": \"{{meal_id}}\",\n  \"rating\": 2,\n  \"emoji\": \"😕\",\n  \"comment\": \"Too salty and took much longer than estimated prep time.\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/plan/{{plan_id}}/feedback",
+              "host": ["{{base_url}}"],
+              "path": ["plan", "{{plan_id}}", "feedback"]
+            },
+            "description": "Submit critical feedback for a meal"
+          },
+          "response": []
+        }
+      ],
+      "description": "Meal planning and feedback endpoints"
+    },
+    {
+      "name": "Community",
+      "item": [
+        {
+          "name": "Join Weight Loss Crew",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"{{user_id}}\",\n  \"crew_type\": \"weight_loss\",\n  \"goals\": [\"lose_weight\", \"eat_healthier\", \"exercise_more\"]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/community/crews/join",
+              "host": ["{{base_url}}"],
+              "path": ["community", "crews", "join"]
+            },
+            "description": "Join a weight loss community crew"
+          },
+          "response": []
+        },
+        {
+          "name": "Join Muscle Gain Crew",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"{{user_id}}\",\n  \"crew_type\": \"muscle_gain\",\n  \"goals\": [\"build_muscle\", \"increase_protein\", \"strength_training\"]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/community/crews/join",
+              "host": ["{{base_url}}"],
+              "path": ["community", "crews", "join"]
+            },
+            "description": "Join a muscle gain community crew"
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Daily Reflection",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"{{user_id}}\",\n  \"reflection_type\": \"daily\",\n  \"content\": \"Today I managed to stick to my meal plan and felt more energetic throughout the day. The Mediterranean quinoa bowl was particularly satisfying!\",\n  \"tags\": [\"energy\", \"adherence\", \"satisfaction\"],\n  \"mood_score\": 4\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/community/reflections",
+              "host": ["{{base_url}}"],
+              "path": ["community", "reflections"]
+            },
+            "description": "Submit a daily personal reflection"
+          },
+          "response": []
+        },
+        {
+          "name": "Submit Weekly Reflection",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"{{user_id}}\",\n  \"reflection_type\": \"weekly\",\n  \"content\": \"This week was challenging with travel, but I learned to make better choices when eating out. The meal prep on Sunday really helped me stay on track.\",\n  \"tags\": [\"travel\", \"meal_prep\", \"learning\"],\n  \"mood_score\": 3\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/community/reflections",
+              "host": ["{{base_url}}"],
+              "path": ["community", "reflections"]
+            },
+            "description": "Submit a weekly personal reflection"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Crew Pulse",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/community/crews/crew_wl_456/pulse",
+              "host": ["{{base_url}}"],
+              "path": ["community", "crews", "crew_wl_456", "pulse"]
+            },
+            "description": "Get crew activity and sentiment data"
+          },
+          "response": []
+        }
+      ],
+      "description": "Community features including crews and reflections"
+    },
+    {
+      "name": "Gamification",
+      "item": [
+        {
+          "name": "Get Gamification Summary",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/gamification/summary?user_id={{user_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["gamification", "summary"],
+              "query": [
+                {
+                  "key": "user_id",
+                  "value": "{{user_id}}"
+                }
+              ]
+            },
+            "description": "Get complete gamification status including level, points, achievements"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Weight Progress",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"{{user_id}}\",\n  \"metric_type\": \"weight\",\n  \"value\": 165.2\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/gamification/progress",
+              "host": ["{{base_url}}"],
+              "path": ["gamification", "progress"]
+            },
+            "description": "Update weight tracking progress"
+          },
+          "response": []
+        },
+        {
+          "name": "Update Exercise Progress",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"{{user_id}}\",\n  \"metric_type\": \"exercise_minutes\",\n  \"value\": 45\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/gamification/progress",
+              "host": ["{{base_url}}"],
+              "path": ["gamification", "progress"]
+            },
+            "description": "Update exercise tracking progress"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Unlocked Achievements",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/gamification/achievements?user_id={{user_id}}&status=unlocked",
+              "host": ["{{base_url}}"],
+              "path": ["gamification", "achievements"],
+              "query": [
+                {
+                  "key": "user_id",
+                  "value": "{{user_id}}"
+                },
+                {
+                  "key": "status",
+                  "value": "unlocked"
+                }
+              ]
+            },
+            "description": "Get user's unlocked achievements"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Available Achievements",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/gamification/achievements?user_id={{user_id}}&status=available",
+              "host": ["{{base_url}}"],
+              "path": ["gamification", "achievements"],
+              "query": [
+                {
+                  "key": "user_id",
+                  "value": "{{user_id}}"
+                },
+                {
+                  "key": "status",
+                  "value": "available"
+                }
+              ]
+            },
+            "description": "Get achievements available to unlock"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Points Leaderboard",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/gamification/leaderboard?type=points&limit=10",
+              "host": ["{{base_url}}"],
+              "path": ["gamification", "leaderboard"],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "points"
+                },
+                {
+                  "key": "limit",
+                  "value": "10"
+                }
+              ]
+            },
+            "description": "Get top 10 users by points"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Adherence Leaderboard",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/gamification/leaderboard?type=adherence&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["gamification", "leaderboard"],
+              "query": [
+                {
+                  "key": "type",
+                  "value": "adherence"
+                },
+                {
+                  "key": "limit",
+                  "value": "20"
+                }
+              ]
+            },
+            "description": "Get top 20 users by adherence"
+          },
+          "response": []
+        }
+      ],
+      "description": "Gamification features including progress tracking, achievements, and leaderboards"
+    },
+    {
+      "name": "Analytics",
+      "item": [
+        {
+          "name": "Track Meal Prepared Event",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_type\": \"meal_prepared\",\n  \"user_id\": \"{{user_id}}\",\n  \"timestamp\": \"2024-10-13T18:30:00Z\",\n  \"properties\": {\n    \"meal_id\": \"{{meal_id}}\",\n    \"prep_time_actual\": 25,\n    \"prep_time_estimated\": 30,\n    \"difficulty_rating\": 3,\n    \"satisfaction_score\": 4.5,\n    \"modifications_made\": [\"reduced_salt\", \"added_herbs\"]\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/analytics/events",
+              "host": ["{{base_url}}"],
+              "path": ["analytics", "events"]
+            },
+            "description": "Track meal preparation event with detailed properties"
+          },
+          "response": []
+        },
+        {
+          "name": "Track Grocery Shopping Event",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_type\": \"grocery_shopping_completed\",\n  \"user_id\": \"{{user_id}}\",\n  \"timestamp\": \"2024-10-13T14:15:00Z\",\n  \"properties\": {\n    \"plan_id\": \"{{plan_id}}\",\n    \"total_cost\": 89.45,\n    \"budget_variance\": -10.55,\n    \"items_purchased\": 23,\n    \"items_substituted\": 2,\n    \"store_type\": \"supermarket\",\n    \"shopping_duration_minutes\": 45\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/analytics/events",
+              "host": ["{{base_url}}"],
+              "path": ["analytics", "events"]
+            },
+            "description": "Track grocery shopping completion with cost and timing data"
+          },
+          "response": []
+        },
+        {
+          "name": "Track App Session Event",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"event_type\": \"app_session\",\n  \"user_id\": \"{{user_id}}\",\n  \"timestamp\": \"2024-10-13T08:00:00Z\",\n  \"properties\": {\n    \"session_duration_minutes\": 12,\n    \"features_used\": [\"meal_planning\", \"community\", \"progress_tracking\"],\n    \"actions_completed\": 5,\n    \"platform\": \"mobile_ios\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/analytics/events",
+              "host": ["{{base_url}}"],
+              "path": ["analytics", "events"]
+            },
+            "description": "Track app usage session with feature interaction data"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Dashboard Data (Date Range)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/analytics/dashboard?start_date=2024-10-01T00:00:00Z&end_date=2024-10-13T23:59:59Z",
+              "host": ["{{base_url}}"],
+              "path": ["analytics", "dashboard"],
+              "query": [
+                {
+                  "key": "start_date",
+                  "value": "2024-10-01T00:00:00Z"
+                },
+                {
+                  "key": "end_date",
+                  "value": "2024-10-13T23:59:59Z"
+                }
+              ]
+            },
+            "description": "Get analytics dashboard for specific date range"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Current Dashboard Data",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/analytics/dashboard",
+              "host": ["{{base_url}}"],
+              "path": ["analytics", "dashboard"]
+            },
+            "description": "Get current analytics dashboard data"
+          },
+          "response": []
+        },
+        {
+          "name": "Get User Insights",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/analytics/users/{{user_id}}/insights",
+              "host": ["{{base_url}}"],
+              "path": ["analytics", "users", "{{user_id}}", "insights"]
+            },
+            "description": "Get personalized insights for specific user"
+          },
+          "response": []
+        }
+      ],
+      "description": "Analytics and event tracking endpoints"
+    },
+    {
+      "name": "Integrations",
+      "item": [
+        {
+          "name": "Google Calendar Auth",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"google\",\n  \"redirect_uri\": \"https://myapp.com/integrations/calendar/callback\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/integrations/calendar/auth",
+              "host": ["{{base_url}}"],
+              "path": ["integrations", "calendar", "auth"]
+            },
+            "description": "Initiate Google Calendar OAuth flow"
+          },
+          "response": []
+        },
+        {
+          "name": "Outlook Calendar Auth",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider\": \"outlook\",\n  \"redirect_uri\": \"https://myapp.com/integrations/calendar/callback\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/integrations/calendar/auth",
+              "host": ["{{base_url}}"],
+              "path": ["integrations", "calendar", "auth"]
+            },
+            "description": "Initiate Outlook Calendar OAuth flow"
+          },
+          "response": []
+        },
+        {
+          "name": "Create Calendar Events",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"meal_plan_id\": \"{{plan_id}}\",\n  \"prep_time_minutes\": 30,\n  \"cook_time_minutes\": 45,\n  \"send_reminders\": true\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/integrations/calendar/events",
+              "host": ["{{base_url}}"],
+              "path": ["integrations", "calendar", "events"]
+            },
+            "description": "Create calendar events for meal preparation"
+          },
+          "response": []
+        },
+        {
+          "name": "Sync Fitness Data (Specific Date)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"date\": \"2024-10-13\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/integrations/fitness/sync",
+              "host": ["{{base_url}}"],
+              "path": ["integrations", "fitness", "sync"]
+            },
+            "description": "Sync fitness data for specific date"
+          },
+          "response": []
+        },
+        {
+          "name": "Sync All Fitness Data",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{base_url}}/integrations/fitness/sync",
+              "host": ["{{base_url}}"],
+              "path": ["integrations", "fitness", "sync"]
+            },
+            "description": "Sync all available fitness data"
+          },
+          "response": []
+        },
+        {
+          "name": "Get Grocery Store Links",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"grocery_list_id\": \"{{plan_id}}\",\n  \"preferred_partners\": [\"instacart\", \"amazon_fresh\", \"walmart\"]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/integrations/grocery/deeplinks",
+              "host": ["{{base_url}}"],
+              "path": ["integrations", "grocery", "deeplinks"]
+            },
+            "description": "Get grocery store deep links with pricing"
+          },
+          "response": []
+        }
+      ],
+      "description": "Third-party integrations including calendar, fitness, and grocery services"
+    },
+    {
+      "name": "Infrastructure",
+      "item": [
+        {
+          "name": "Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Basic API health check"
+          },
+          "response": []
+        },
+        {
+          "name": "Detailed Health Check",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health/detailed",
+              "host": ["{{base_url}}"],
+              "path": ["health", "detailed"]
+            },
+            "description": "Comprehensive system health check with service details"
+          },
+          "response": []
+        },
+        {
+          "name": "System Metrics",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/metrics",
+              "host": ["{{base_url}}"],
+              "path": ["metrics"]
+            },
+            "description": "Get system performance metrics"
+          },
+          "response": []
+        }
+      ],
+      "description": "Infrastructure monitoring and health check endpoints"
+    },
+    {
+      "name": "Test Scenarios",
+      "item": [
+        {
+          "name": "Rate Limit Test",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/health",
+              "host": ["{{base_url}}"],
+              "path": ["health"]
+            },
+            "description": "Test endpoint for rate limiting (make multiple quick requests)"
+          },
+          "response": []
+        },
+        {
+          "name": "Invalid Request (Validation Error)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"\",\n  \"preferences\": {\n    \"budget_per_week\": -50\n  }\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/plan/generate",
+              "host": ["{{base_url}}"],
+              "path": ["plan", "generate"]
+            },
+            "description": "Test request with validation errors"
+          },
+          "response": []
+        },
+        {
+          "name": "Unauthorized Request",
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/gamification/summary?user_id={{user_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["gamification", "summary"],
+              "query": [
+                {
+                  "key": "user_id",
+                  "value": "{{user_id}}"
+                }
+              ]
+            },
+            "description": "Test request without authentication"
+          },
+          "response": []
+        }
+      ],
+      "description": "Test scenarios for error handling and edge cases"
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Auto-generate timestamps for analytics events",
+          "if (pm.request.url.path && pm.request.url.path.includes('analytics/events')) {",
+          "    try {",
+          "        const body = JSON.parse(pm.request.body.raw);",
+          "        if (!body.timestamp) {",
+          "            body.timestamp = new Date().toISOString();",
+          "            pm.request.body.raw = JSON.stringify(body, null, 2);",
+          "        }",
+          "    } catch (e) {",
+          "        // Ignore JSON parse errors",
+          "    }",
+          "}"
+        ]
+      }
+    },
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Global test script for common response validation",
+          "",
+          "// Check for rate limiting",
+          "if (pm.response.code === 429) {",
+          "    const retryAfter = pm.response.headers.get('Retry-After');",
+          "    console.log(`Rate limited. Retry after ${retryAfter} seconds.`);",
+          "}",
+          "",
+          "// Check for server errors",
+          "if (pm.response.code >= 500) {",
+          "    console.log('Server error detected:', pm.response.status);",
+          "    console.log('Response:', pm.response.text());",
+          "}",
+          "",
+          "// Log response time for performance monitoring",
+          "if (pm.response.responseTime > 1000) {",
+          "    console.log(`Slow response: ${pm.response.responseTime}ms`);",
+          "}",
+          "",
+          "// Validate common response structure",
+          "if (pm.response.code === 200 && pm.response.json) {",
+          "    try {",
+          "        const response = pm.response.json();",
+          "        ",
+          "        // Check for error structure in successful responses",
+          "        if (response.error) {",
+          "            console.log('Error in response:', response.error);",
+          "        }",
+          "        ",
+          "        // Log successful API calls",
+          "        if (response.success === true || (!response.error && !response.message?.includes('error'))) {",
+          "            console.log('✅ API call successful');",
+          "        }",
+          "    } catch (e) {",
+          "        // Ignore JSON parse errors for non-JSON responses",
+          "    }",
+          "}"
+        ]
+      }
+    }
+  ]
+}

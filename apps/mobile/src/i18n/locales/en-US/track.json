@@ -1,0 +1,17 @@
+{
+  "title": "Track",
+  "description": "Quick logging keeps recommendations accurate. Capture meals, hydration, and more.",
+  "quickAdd": "Quick add",
+  "noteLabel": "Free-form note",
+  "notePlaceholder": "e.g. 2 cups spinach + grilled tofu",
+  "submit": "Submit log",
+  "queued": "Log queued",
+  "pendingSync": "We'll sync this entry when you reconnect.",
+  "error": "We could not queue your log. Please retry.",
+  "quickActions": [
+    "Breakfast",
+    "Hydration",
+    "Supplements",
+    "Mood"
+  ]
+}

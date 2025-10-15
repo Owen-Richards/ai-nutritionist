@@ -1,0 +1,8 @@
+{
+  "version": "1.0.0",
+  "created_at": "2024-01-01T00:00:00Z",
+  "author": "nutrition-team",
+  "description": "Initial version - Nutritional analysis of food items",
+  "tags": ["nutrition", "analysis", "food-logging"],
+  "cost_tier": "low"
+}

@@ -4,13 +4,14 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import date
-from typing import Dict, Optional
+from typing import Dict, Optional, List, Any
 
 from .data_store import PlanDataStore
 from .models import PlanPreferences
 from .plan_coordinator import PlanCoordinator
 from .repository import GeneratedMealPlan
 from .ml_logging import FeatureLogger
+from .optimizer import SmartSwapEngine
 
 
 class MealPlanPipeline:
@@ -21,10 +22,12 @@ class MealPlanPipeline:
         coordinator: PlanCoordinator,
         data_store: PlanDataStore,
         feature_logger: FeatureLogger,
+        swap_engine: Optional[SmartSwapEngine] = None,
     ) -> None:
         self._coordinator = coordinator
         self._data_store = data_store
         self._feature_logger = feature_logger
+        self._swap_engine = swap_engine or SmartSwapEngine()
 
     def generate_plan(
         self,
@@ -55,6 +58,25 @@ class MealPlanPipeline:
         self._data_store.save_generated_plan(plan)
         self._feature_logger.log_plan_generation(plan, merged_preferences)
         return plan
+
+    def suggest_swaps(
+        self,
+        user_id: str,
+        *,
+        meal_id: Optional[str] = None,
+        constraints: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Suggest smart swaps for a user based on the latest plan."""
+
+        recent_plans = self._data_store.list_recent_plans(user_id, limit=1)
+        if not recent_plans:
+            return []
+        plan = recent_plans[0]
+        return self._swap_engine.suggest_swaps(
+            plan,
+            meal_id=meal_id,
+            constraints=constraints or {},
+        )
 
 
 def _merge_preferences(

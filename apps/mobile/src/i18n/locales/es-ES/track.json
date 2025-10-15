@@ -1,0 +1,17 @@
+{
+  "title": "Registro",
+  "description": "Un registro rápido mantiene tus recomendaciones al día.",
+  "quickAdd": "Añadir rápido",
+  "noteLabel": "Nota libre",
+  "notePlaceholder": "ej. 2 tazas de espinaca + tofu a la plancha",
+  "submit": "Guardar registro",
+  "queued": "Registro en cola",
+  "pendingSync": "Sincronizaremos esta entrada al reconectar.",
+  "error": "No pudimos poner el registro en cola. Reintenta.",
+  "quickActions": [
+    "Desayuno",
+    "Hidratación",
+    "Suplementos",
+    "Ánimo"
+  ]
+}

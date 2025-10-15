@@ -1,0 +1,438 @@
+name: 🏷️ Release Management
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.0)'
+        required: true
+        type: string
+      release_type:
+        description: 'Type of release'
+        required: true
+        default: 'minor'
+        type: choice
+        options:
+          - major
+          - minor
+          - patch
+          - hotfix
+      prerelease:
+        description: 'Mark as pre-release'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  NODE_VERSION: '20'
+  PYTHON_VERSION: '3.13'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  validate-release:
+    name: 🔍 Validate Release
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is_prerelease: ${{ steps.version.outputs.is_prerelease }}
+      release_notes: ${{ steps.notes.outputs.release_notes }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract version
+        id: version
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+            IS_PRERELEASE="${{ github.event.inputs.prerelease }}"
+          else
+            VERSION="${{ github.ref_name }}"
+            IS_PRERELEASE="false"
+          fi
+          
+          # Validate version format
+          if [[ ! $VERSION =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9]+)?$ ]]; then
+            echo "❌ Invalid version format: $VERSION"
+            exit 1
+          fi
+          
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "is_prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
+          echo "✅ Version validated: $VERSION"
+
+      - name: Check if tag exists
+        run: |
+          if git tag -l "${{ steps.version.outputs.version }}" | grep -q "${{ steps.version.outputs.version }}"; then
+            echo "❌ Tag ${{ steps.version.outputs.version }} already exists"
+            exit 1
+          fi
+
+      - name: Validate branch
+        run: |
+          CURRENT_BRANCH=$(git branch --show-current)
+          if [[ "$CURRENT_BRANCH" != "main" && "${{ github.event.inputs.release_type }}" != "hotfix" ]]; then
+            echo "❌ Releases must be created from main branch (current: $CURRENT_BRANCH)"
+            exit 1
+          fi
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          # Generate changelog since last tag
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          
+          if [[ -n "$LAST_TAG" ]]; then
+            RELEASE_NOTES=$(git log ${LAST_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
+          else
+            RELEASE_NOTES=$(git log --pretty=format:"- %s (%h)" --no-merges)
+          fi
+          
+          # Save to file for multiline output
+          cat > release_notes.md << 'EOF'
+          ## What's Changed
+          
+          $RELEASE_NOTES
+          
+          ## Features
+          - Enhanced AI nutritionist capabilities
+          - Improved performance and reliability
+          - Enhanced security measures
+          
+          ## Bug Fixes
+          - Various stability improvements
+          - Performance optimizations
+          
+          **Full Changelog**: https://github.com/${{ github.repository }}/compare/${LAST_TAG}...${{ steps.version.outputs.version }}
+          EOF
+          
+          echo "release_notes<<EOF" >> $GITHUB_OUTPUT
+          cat release_notes.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+  build-release-artifacts:
+    name: 🏗️ Build Release Artifacts
+    runs-on: ubuntu-latest
+    needs: validate-release
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            arch: amd64
+          - platform: linux/arm64
+            arch: arm64
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push release image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: ${{ matrix.platform }}
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.validate-release.outputs.version }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          labels: |
+            org.opencontainers.image.title=AI Nutritionist
+            org.opencontainers.image.description=AI-powered nutrition assistant
+            org.opencontainers.image.version=${{ needs.validate-release.outputs.version }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.validate-release.outputs.version }}
+          format: spdx-json
+          output-file: sbom-${{ matrix.arch }}.spdx.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v3
+        with:
+          name: sbom-${{ matrix.arch }}
+          path: sbom-${{ matrix.arch }}.spdx.json
+
+  build-distribution:
+    name: 📦 Build Distribution Packages
+    runs-on: ubuntu-latest
+    needs: validate-release
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install build dependencies
+        run: |
+          pip install build twine wheel setuptools
+
+      - name: Update version in setup files
+        run: |
+          # Update version in pyproject.toml
+          sed -i "s/version = \".*\"/version = \"${VERSION#v}\"/" pyproject.toml
+          
+          # Update version in package.json
+          npm version ${VERSION#v} --no-git-tag-version
+        env:
+          VERSION: ${{ needs.validate-release.outputs.version }}
+
+      - name: Build Python distribution
+        run: |
+          python -m build
+
+      - name: Verify distribution
+        run: |
+          python -m twine check dist/*
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
+      - name: Build Node.js packages
+        run: |
+          yarn install --frozen-lockfile
+          yarn turbo run build
+
+      - name: Package applications
+        run: |
+          # Create distribution archives
+          mkdir -p release-artifacts
+          
+          # Python package
+          cp dist/* release-artifacts/
+          
+          # Web application
+          tar -czf release-artifacts/web-app-${{ needs.validate-release.outputs.version }}.tar.gz -C apps/web dist/
+          
+          # Mobile application artifacts
+          tar -czf release-artifacts/mobile-app-${{ needs.validate-release.outputs.version }}.tar.gz -C apps/mobile dist/
+          
+          # API documentation
+          tar -czf release-artifacts/api-docs-${{ needs.validate-release.outputs.version }}.tar.gz docs/
+
+      - name: Generate checksums
+        run: |
+          cd release-artifacts
+          sha256sum * > checksums.sha256
+          md5sum * > checksums.md5
+
+      - name: Upload distribution artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: release-distributions
+          path: release-artifacts/
+
+  security-scan:
+    name: 🔒 Security Scan Release
+    runs-on: ubuntu-latest
+    needs: [validate-release, build-release-artifacts]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Scan release image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.validate-release.outputs.version }}
+          format: 'table'
+          exit-code: '1'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Generate security report
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.validate-release.outputs.version }}
+          format: 'json'
+          output: 'security-report.json'
+
+      - name: Upload security report
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-report
+          path: security-report.json
+
+  create-release:
+    name: 🚀 Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [validate-release, build-release-artifacts, build-distribution, security-scan]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+
+      - name: Create Git tag
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a ${{ needs.validate-release.outputs.version }} -m "Release ${{ needs.validate-release.outputs.version }}"
+          git push origin ${{ needs.validate-release.outputs.version }}
+
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        id: create_release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ needs.validate-release.outputs.version }}
+          release_name: Release ${{ needs.validate-release.outputs.version }}
+          body: ${{ needs.validate-release.outputs.release_notes }}
+          draft: false
+          prerelease: ${{ needs.validate-release.outputs.is_prerelease }}
+
+      - name: Upload release assets
+        run: |
+          # Upload distribution files
+          for file in release-distributions/*; do
+            if [[ -f "$file" ]]; then
+              gh release upload ${{ needs.validate-release.outputs.version }} "$file"
+            fi
+          done
+          
+          # Upload SBOM files
+          for file in sbom-*/*.spdx.json; do
+            if [[ -f "$file" ]]; then
+              gh release upload ${{ needs.validate-release.outputs.version }} "$file"
+            fi
+          done
+          
+          # Upload security report
+          if [[ -f "security-report/security-report.json" ]]; then
+            gh release upload ${{ needs.validate-release.outputs.version }} "security-report/security-report.json"
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  deploy-release:
+    name: 🚀 Deploy Release
+    runs-on: ubuntu-latest
+    needs: [validate-release, create-release]
+    if: needs.validate-release.outputs.is_prerelease == 'false'
+    
+    steps:
+      - name: Trigger production deployment
+        uses: actions/github-script@v6
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'deployment.yml',
+              ref: '${{ needs.validate-release.outputs.version }}',
+              inputs: {
+                environment: 'production',
+                deployment_strategy: 'blue-green'
+              }
+            });
+
+  notify-release:
+    name: 📢 Notify Release
+    runs-on: ubuntu-latest
+    needs: [validate-release, create-release, deploy-release]
+    if: always()
+    
+    steps:
+      - name: Notify team
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const version = '${{ needs.validate-release.outputs.version }}';
+            const isPrerelease = '${{ needs.validate-release.outputs.is_prerelease }}' === 'true';
+            const deployResult = '${{ needs.deploy-release.result }}';
+            
+            let message = `🚀 **Release ${version}** has been created!`;
+            
+            if (isPrerelease) {
+              message += '\n\n⚠️ This is a pre-release version.';
+            } else if (deployResult === 'success') {
+              message += '\n\n✅ Successfully deployed to production.';
+            } else if (deployResult === 'failure') {
+              message += '\n\n❌ Deployment to production failed.';
+            }
+            
+            message += `\n\n📋 [View Release](https://github.com/${{ github.repository }}/releases/tag/${version})`;
+            
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Release ${version} - ${isPrerelease ? 'Pre-release' : 'Production'} Deployment`,
+              body: message,
+              labels: ['release', isPrerelease ? 'pre-release' : 'production']
+            });
+
+  update-documentation:
+    name: 📚 Update Documentation
+    runs-on: ubuntu-latest
+    needs: [validate-release, create-release]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Update changelog
+        run: |
+          # Update CHANGELOG.md with release notes
+          cat > temp_changelog.md << 'EOF'
+          # Changelog
+          
+          ## [${{ needs.validate-release.outputs.version }}] - $(date +%Y-%m-%d)
+          
+          ${{ needs.validate-release.outputs.release_notes }}
+          
+          EOF
+          
+          if [[ -f CHANGELOG.md ]]; then
+            tail -n +2 CHANGELOG.md >> temp_changelog.md
+          fi
+          
+          mv temp_changelog.md CHANGELOG.md
+
+      - name: Update version documentation
+        run: |
+          # Update version references in documentation
+          find docs/ -name "*.md" -exec sed -i "s/v[0-9]\+\.[0-9]\+\.[0-9]\+/${{ needs.validate-release.outputs.version }}/g" {} \;
+
+      - name: Commit documentation updates
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md docs/
+          git commit -m "docs: update documentation for ${{ needs.validate-release.outputs.version }}"
+          git push origin main

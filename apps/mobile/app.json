@@ -1,0 +1,52 @@
+{
+  "expo": {
+    "name": "AI Health Mobile",
+    "slug": "ai-health-mobile",
+    "scheme": "aihealth",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "entryPoint": "./index.ts",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "extra": {
+      "apiBaseUrl": "https://api.ai-nutritionist.test/v1",
+      "eas": {
+        "projectId": "00000000-0000-0000-0000-000000000000"
+      },
+      "sentryDsn": "",
+      "featureFlags": {
+        "enableOfflineQueue": true,
+        "enableNotificationsPrompt": true
+      }
+    },
+    "plugins": [
+      [
+        "sentry-expo",
+        {
+          "project": "ai-nutritionist-mobile",
+          "organization": "ai-health"
+        }
+      ],
+      "expo-notifications"
+    ],
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/00000000-0000-0000-0000-000000000000",
+      "fallbackToCacheTimeout": 0
+    }
+  }
+}

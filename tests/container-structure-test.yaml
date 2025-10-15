@@ -1,0 +1,51 @@
+schemaVersion: '2.0.0'
+
+commandTests:
+  - name: 'Python is installed'
+    command: 'python'
+    args: ['--version']
+    expectedOutput: ['Python 3.13']
+
+  - name: 'Pip is installed'
+    command: 'pip'
+    args: ['--version']
+    expectedOutput: ['pip']
+
+  - name: 'Source code exists'
+    command: 'ls'
+    args: ['/var/task/src']
+    exitCode: 0
+
+  - name: 'Lambda handler exists'
+    command: 'ls'
+    args: ['/var/task/src/handlers/message_handler.py']
+    exitCode: 0
+
+fileExistenceTests:
+  - name: 'Requirements installed'
+    path: '/var/task/boto3'
+    shouldExist: true
+
+  - name: 'Source code present'
+    path: '/var/task/src'
+    shouldExist: true
+    isDirectory: true
+
+  - name: 'Handler file present'
+    path: '/var/task/src/handlers/message_handler.py'
+    shouldExist: true
+
+fileContentTests:
+  - name: 'Lambda handler function exists'
+    path: '/var/task/src/handlers/message_handler.py'
+    expectedContents: ['def lambda_handler']
+
+metadataTest:
+  - name: 'Lambda runtime'
+    command: 'python'
+    args: ['--version']
+    expectedOutput: ['Python 3.13']
+  
+  - name: 'Working directory'
+    command: 'pwd'
+    expectedOutput: ['/var/task']

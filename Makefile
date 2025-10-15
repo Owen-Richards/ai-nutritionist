@@ -42,6 +42,33 @@ test:
 test-cov:
 	pytest tests/ --cov=src/ --cov-report=html --cov-report=term
 
+# Regression testing
+test-regression-pre-commit:
+	python -m tests.regression.cli pre-commit
+
+test-regression-pr:
+	python -m tests.regression.cli pull-request --max-duration 1800
+
+test-regression-nightly:
+	python -m tests.regression.cli nightly
+
+test-regression-flaky:
+	python -m tests.regression.cli flaky-detection --runs-per-test 10
+
+test-regression-analyze:
+	python -m tests.regression.cli analyze --top-flaky 10 --top-slow 10
+
+test-regression-demo:
+	python tests/regression/demo.py
+
+# Install regression testing hooks
+install-test-hooks:
+	python -m tests.regression.cli install-hooks
+
+# Setup CI integration
+setup-ci:
+	python -m tests.regression.cli setup-ci --provider github
+
 # Code quality
 format:
 	black src/ tests/

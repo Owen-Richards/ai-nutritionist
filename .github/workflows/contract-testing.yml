@@ -1,0 +1,434 @@
+name: Contract Testing
+
+on:
+  push:
+    branches: [ main, develop, feature/*, release/* ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    # Run nightly contract verification
+    - cron: '0 2 * * *'
+
+env:
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '18'
+
+jobs:
+  contract-validation:
+    name: Contract Validation
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0  # Needed for breaking change detection
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Cache Python dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements-dev.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+    
+    - name: Run contract validation tests
+      run: |
+        python scripts/contract_testing_ci.py --mode validation --verbose
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+    
+    - name: Upload contract validation results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: contract-validation-results
+        path: contract-test-results/
+        retention-days: 30
+
+  consumer-contract-tests:
+    name: Consumer Contract Tests
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        consumer: [mobile-app, web-app, analytics-service]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+    
+    - name: Run consumer contract tests
+      run: |
+        python scripts/contract_testing_ci.py \
+          --mode consumer \
+          --consumer ${{ matrix.consumer }} \
+          --verbose
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+    
+    - name: Upload Pact files
+      uses: actions/upload-artifact@v3
+      with:
+        name: pact-files-${{ matrix.consumer }}
+        path: pacts/
+        retention-days: 30
+
+  breaking-change-detection:
+    name: Breaking Change Detection
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+    
+    - name: Check for breaking changes
+      id: breaking_changes
+      run: |
+        python scripts/contract_testing_ci.py \
+          --mode breaking-changes \
+          --base-branch origin/${{ github.base_ref }} \
+          --verbose
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+      continue-on-error: true
+    
+    - name: Comment PR with breaking changes
+      if: steps.breaking_changes.outcome == 'failure'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          const path = require('path');
+          
+          // Find the latest test report
+          const resultsDir = 'contract-test-results';
+          const files = fs.readdirSync(resultsDir);
+          const reportFile = files.find(f => f.startsWith('contract_test_report_'));
+          
+          if (reportFile) {
+            const reportPath = path.join(resultsDir, reportFile);
+            const report = JSON.parse(fs.readFileSync(reportPath, 'utf8'));
+            
+            if (report.breaking_changes && report.breaking_changes.length > 0) {
+              let comment = '⚠️ **Breaking Changes Detected**\n\n';
+              comment += 'The following contracts have breaking changes:\n\n';
+              
+              for (const change of report.breaking_changes) {
+                comment += `### ${change.provider} → ${change.consumer}\n`;
+                comment += `Contract ID: \`${change.contract_id}\`\n\n`;
+                
+                for (const c of change.changes) {
+                  comment += `- **${c.category}**: ${c.description}\n`;
+                  comment += `  - Impact: ${c.impact}\n`;
+                }
+                comment += '\n';
+              }
+              
+              comment += '\n**Actions Required:**\n';
+              comment += '1. Review the breaking changes above\n';
+              comment += '2. Update consumer applications to handle changes\n';
+              comment += '3. Consider API versioning for backward compatibility\n';
+              comment += '4. Coordinate deployment with affected teams\n';
+              
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: comment
+              });
+            }
+          }
+
+  provider-verification:
+    name: Provider Verification
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'schedule'
+    
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+    
+    - name: Start test services
+      run: |
+        # Start services in background for contract verification
+        # This would typically start your actual services or use Docker Compose
+        
+        # Create provider config for testing
+        cat > provider-config.json << EOF
+        [
+          {
+            "name": "nutrition-service",
+            "url": "http://localhost:8001",
+            "auth_headers": {
+              "Authorization": "Bearer test-token"
+            }
+          },
+          {
+            "name": "meal-planning-service", 
+            "url": "http://localhost:8002",
+            "auth_headers": {
+              "Authorization": "Bearer test-token"
+            }
+          },
+          {
+            "name": "messaging-service",
+            "url": "http://localhost:8003",
+            "auth_headers": {
+              "Authorization": "Bearer test-token"
+            }
+          }
+        ]
+        EOF
+        
+        # In a real scenario, you would start your services here
+        # docker-compose -f docker-compose.test.yml up -d
+        
+        # Mock services for demonstration
+        echo "Mock services would be started here"
+    
+    - name: Run provider verification tests
+      run: |
+        python scripts/contract_testing_ci.py \
+          --mode provider \
+          --provider-config provider-config.json \
+          --verbose
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+        REDIS_URL: redis://localhost:6379
+      continue-on-error: true
+    
+    - name: Upload verification results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: provider-verification-results
+        path: contract-test-results/
+        retention-days: 30
+
+  contract-registry-publish:
+    name: Publish Contracts
+    runs-on: ubuntu-latest
+    needs: [contract-validation, consumer-contract-tests]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+    
+    - name: Download Pact files
+      uses: actions/download-artifact@v3
+      with:
+        pattern: pact-files-*
+        path: pacts/
+        merge-multiple: true
+    
+    - name: Publish contracts to registry
+      run: |
+        python scripts/contract_testing_ci.py \
+          --mode all \
+          --publish-registry ${{ secrets.PACT_BROKER_URL }} \
+          --api-key ${{ secrets.PACT_BROKER_TOKEN }} \
+          --verbose
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+    
+    - name: Notify Slack on contract publication
+      if: success()
+      uses: 8398a7/action-slack@v3
+      with:
+        status: success
+        channel: '#api-contracts'
+        text: |
+          ✅ Contracts published to registry
+          Branch: ${{ github.ref_name }}
+          Commit: ${{ github.sha }}
+          View contracts: ${{ secrets.PACT_BROKER_URL }}
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  comprehensive-contract-test:
+    name: Comprehensive Contract Test
+    runs-on: ubuntu-latest
+    needs: [contract-validation, consumer-contract-tests, provider-verification]
+    if: always()
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r requirements-dev.txt
+    
+    - name: Download all test artifacts
+      uses: actions/download-artifact@v3
+      with:
+        path: artifacts/
+    
+    - name: Run comprehensive contract test suite
+      run: |
+        python scripts/contract_testing_ci.py \
+          --mode all \
+          --verbose \
+          --output comprehensive_contract_report.json
+      env:
+        PYTHONPATH: ${{ github.workspace }}
+    
+    - name: Generate contract test summary
+      run: |
+        python -c "
+        import json
+        import sys
+        
+        with open('contract-test-results/comprehensive_contract_report.json', 'r') as f:
+            report = json.load(f)
+        
+        print('# Contract Testing Summary')
+        print(f'**Status:** {report[\"status\"].upper()}')
+        print(f'**Timestamp:** {report[\"timestamp\"]}')
+        print()
+        
+        summary = report['summary']
+        print('## Test Results')
+        print(f'- Consumer Tests: {summary[\"consumer_tests\"]}')
+        print(f'- Provider Verifications: {summary[\"provider_verifications\"]}')
+        print(f'- Contract Validations: {summary[\"contract_validations\"]}')
+        print(f'- Breaking Changes: {summary[\"breaking_changes_detected\"]}')
+        print(f'- Warnings: {summary[\"warnings\"]}')
+        print()
+        
+        if report['status'] == 'failed':
+            print('## Failures')
+            for test in report.get('consumer_tests', []):
+                if test['status'] == 'failed':
+                    print(f'- Consumer {test[\"consumer\"]}: {test[\"errors\"]}')
+            
+            for verification in report.get('provider_verifications', []):
+                if verification['status'] == 'failed':
+                    print(f'- Provider {verification[\"provider\"]}: {verification[\"errors\"]}')
+        
+        sys.exit(0 if report['status'] == 'passed' else 1)
+        " > contract_summary.md
+    
+    - name: Upload comprehensive report
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: comprehensive-contract-report
+        path: |
+          contract-test-results/comprehensive_contract_report.json
+          contract_summary.md
+        retention-days: 90
+    
+    - name: Comment PR with test summary
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          
+          if (fs.existsSync('contract_summary.md')) {
+            const summary = fs.readFileSync('contract_summary.md', 'utf8');
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: summary
+            });
+          }
+    
+    - name: Set job status based on test results
+      run: |
+        if [ -f "contract-test-results/comprehensive_contract_report.json" ]; then
+          STATUS=$(python -c "
+          import json
+          with open('contract-test-results/comprehensive_contract_report.json', 'r') as f:
+              report = json.load(f)
+          print(report['status'])
+          ")
+          
+          if [ "$STATUS" != "passed" ]; then
+            echo "Contract tests failed!"
+            exit 1
+          fi
+        else
+          echo "No test report found!"
+          exit 1
+        fi

@@ -1,0 +1,14 @@
+{
+  "title": "Planes",
+  "description": "Revisa la semana. Toca un día para pedir cambios o sustituciones.",
+  "weekOf": "Semana del {{date, date}}",
+  "dayHeading": "{{date, weekday}}",
+  "empty": {
+    "title": "Aún no hay planes",
+    "body": "Cuando tu coach cree un plan, aparecerá aquí."
+  },
+  "error": {
+    "title": "Planes no disponibles",
+    "body": "No pudimos cargar tus planes. Desliza para actualizar e inténtalo otra vez."
+  }
+}

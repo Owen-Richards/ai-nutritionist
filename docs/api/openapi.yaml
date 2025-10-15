@@ -1,0 +1,385 @@
+﻿openapi: 3.1.0
+info:
+  title: AI Nutritionist API
+  version: 0.1.0
+  description: |
+    HTTP interface for the AI Nutritionist platform. Endpoints power the React Native app,
+    web console, and conversational channels.
+servers:
+  - url: https://api.ai-nutritionist.test/v1
+paths:
+  /auth/login:
+    post:
+      summary: Begin authentication via magic link / OTP.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [channel, identifier]
+              properties:
+                channel:
+                  type: string
+                  enum: [sms, email]
+                identifier:
+                  type: string
+                  description: Phone number (E.164) or email address.
+      responses:
+        '202':
+          description: Challenge delivered.
+  /auth/verify:
+    post:
+      summary: Complete authentication challenge and issue tokens.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identifier, code]
+              properties:
+                identifier:
+                  type: string
+                code:
+                  type: string
+      responses:
+        '200':
+          description: Authentication succeeded.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken:
+                    type: string
+                  refreshToken:
+                    type: string
+  /me:
+    get:
+      summary: Retrieve current user profile and entitlements.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Profile payload.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+  /me/entitlements:
+    get:
+      summary: Return subscription status and token balances.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Entitlement details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Entitlements'
+  /plans:
+    get:
+      summary: List meal plans for a time window.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: weekOf
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Array of meal plans.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MealPlan'
+    post:
+      summary: Create or regenerate a meal plan.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMealPlanRequest'
+      responses:
+        '202':
+          description: Plan generation triggered.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealPlan'
+  /plans/{planId}:
+    put:
+      summary: Update plan metadata or meal swaps.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: planId
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMealPlanRequest'
+      responses:
+        '200':
+          description: Updated plan.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MealPlan'
+  /grocery-list:
+    get:
+      summary: Retrieve active grocery list derived from meal plans.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Grocery list contents.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GroceryList'
+    post:
+      summary: Regenerate grocery list for provided plan ids.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                planIds:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '202':
+          description: Regeneration accepted.
+  /logs/food:
+    post:
+      summary: Record a food entry or barcode scan result.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FoodLogEntry'
+      responses:
+        '200':
+          description: Log accepted.
+  /billing/checkout-session:
+    post:
+      summary: Create a Stripe checkout session for subscriptions or token packs.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                planId:
+                  type: string
+      responses:
+        '200':
+          description: Checkout session payload.
+  /billing/customer-portal:
+    get:
+      summary: Generate a Stripe customer portal link.
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Portal link payload.
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    UserProfile:
+      type: object
+      required: [id]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+          nullable: true
+        email:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        dietaryPreferences:
+          type: array
+          items:
+            type: string
+        allergies:
+          type: array
+          items:
+            type: string
+        budgetPerWeek:
+          type: number
+          nullable: true
+        goals:
+          type: array
+          items:
+            $ref: '#/components/schemas/GoalPreference'
+    GoalPreference:
+      type: object
+      required: [id, type]
+      properties:
+        id:
+          type: string
+        type:
+          type: string
+          enum: [weight_loss, weight_gain, maintenance, performance]
+        targetCalories:
+          type: number
+        proteinTarget:
+          type: number
+          nullable: true
+    Entitlements:
+      type: object
+      required: [subscriptionPlan, tokensRemaining]
+      properties:
+        subscriptionPlan:
+          type: string
+        tokensRemaining:
+          type: integer
+        renewalDate:
+          type: string
+          format: date
+        features:
+          type: array
+          items:
+            type: string
+    MealPlan:
+      type: object
+      required: [id, userId, weekOf, days]
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        weekOf:
+          type: string
+          format: date
+        days:
+          type: array
+          items:
+            $ref: '#/components/schemas/DayPlan'
+    DayPlan:
+      type: object
+      required: [date, meals]
+      properties:
+        date:
+          type: string
+          format: date
+        meals:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/Meal'
+    Meal:
+      type: object
+      required: [id, name, mealType]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        mealType:
+          type: string
+          enum: [breakfast, lunch, dinner, snack]
+        instructions:
+          type: string
+          nullable: true
+        ingredients:
+          type: array
+          items:
+            type: string
+    CreateMealPlanRequest:
+      type: object
+      required: [weekOf]
+      properties:
+        weekOf:
+          type: string
+          format: date
+        regenerate:
+          type: boolean
+          default: false
+        preferences:
+          type: object
+    UpdateMealPlanRequest:
+      type: object
+      properties:
+        notes:
+          type: string
+        swaps:
+          type: array
+          items:
+            type: object
+            properties:
+              day:
+                type: string
+                format: date
+              mealType:
+                type: string
+                enum: [breakfast, lunch, dinner, snack]
+              replacementMealId:
+                type: string
+    GroceryList:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              quantity:
+                type: string
+              department:
+                type: string
+                nullable: true
+    FoodLogEntry:
+      type: object
+      required: [timestamp, description]
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        description:
+          type: string
+        calories:
+          type: number
+          nullable: true
+        protein:
+          type: number
+          nullable: true
+        source:
+          type: string
+          enum: [manual, barcode, photo]

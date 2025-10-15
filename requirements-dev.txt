@@ -4,7 +4,23 @@ pytest-mock>=3.11.0
 pytest-asyncio>=0.21.0
 pytest-cov>=4.1.0
 pytest-xdist>=3.3.0
+pytest-html>=3.2.0
 moto[all]>=4.2.0
+
+# E2E Testing dependencies
+selenium>=4.15.0
+webdriver-manager>=4.0.0
+playwright>=1.40.0
+appium-python-client>=3.1.0
+
+# API Testing
+aiohttp>=3.9.0
+requests>=2.31.0
+httpx>=0.25.0
+
+# Performance testing
+locust>=2.16.0
+pytest-benchmark>=4.0.0
 
 # Code quality
 black>=23.0.0
@@ -22,8 +38,19 @@ mkdocs>=1.5.0
 mkdocs-material>=9.2.0
 mkdocs-mermaid2-plugin>=1.1.0
 
-# Performance testing
-locust>=2.16.0
+# Contract Testing
+pact-python>=2.0.0
+jsonschema>=4.19.0
+openapi-spec-validator>=0.7.0
+asyncapi-python>=0.4.0
+grpcio-tools>=1.60.0
+grpcio-status>=1.60.0
+protobuf>=4.25.0
 
 # AWS CLI tools
 aws-cli>=1.29.0
+
+# Test reporting and visualization
+allure-pytest>=2.13.0
+pytest-html>=3.2.0
+pytest-json-report>=1.5.0

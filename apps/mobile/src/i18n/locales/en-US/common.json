@@ -1,0 +1,75 @@
+{
+  "appName": "AI Nutritionist",
+  "navigation": {
+    "today": "Today",
+    "plans": "Plans",
+    "groceries": "Groceries",
+    "track": "Track",
+    "profile": "Profile"
+  },
+  "actions": {
+    "viewPlan": "View weekly plan",
+    "reviewGroceries": "Review groceries",
+    "logMeal": "Log a meal",
+    "retry": "Retry",
+    "dismiss": "Dismiss",
+    "sendToRetailer": "Send to retailer",
+    "shareList": "Share list",
+    "submit": "Submit",
+    "cancel": "Cancel",
+    "changeLanguage": "Change language",
+    "switchLocale": "Switch to {{locale}}",
+    "enableNotifications": "Enable notifications",
+    "openSettings": "Open settings",
+    "signIn": "Sign in",
+    "signOut": "Sign out"
+  },
+  "states": {
+    "loading": "Loading…",
+    "fetching": "Refreshing…",
+    "empty": "Nothing to show yet",
+    "error": "Something went wrong",
+    "offline": "You are offline. We'll sync when you reconnect.",
+    "online": "Back online. Syncing updates…",
+    "queued": "Queued while offline"
+  },
+  "labels": {
+    "tokensRemaining": "Tokens remaining",
+    "planRenews": "Renews {{date, date}}",
+    "language": "Language",
+    "appearance": "Appearance",
+    "notifications": "Notifications",
+    "betaFeatures": "Beta features"
+  },
+  "notifications": {
+    "prePromptTitle": "Stay in the loop",
+    "prePromptBody": "Turn on reminders for meals, groceries, and progress nudges.",
+    "allow": "Allow notifications",
+    "notNow": "Not now"
+  },
+  "errors": {
+    "offline": "You are offline right now.",
+    "planUnavailable": "Today's plan is not ready yet.",
+    "groceryUnavailable": "Grocery data is unavailable.",
+    "logFailed": "We could not save your log.",
+    "generic": "Something went wrong."
+  },
+  "offlineBanner": {
+    "title": "Offline mode",
+    "message": "You are currently offline. We'll enqueue your actions."
+  },
+  "dateFormats": {
+    "short": {
+      "month": "short",
+      "day": "numeric"
+    },
+    "weekday": {
+      "weekday": "short"
+    },
+    "full": {
+      "month": "long",
+      "day": "numeric",
+      "year": "numeric"
+    }
+  }
+}

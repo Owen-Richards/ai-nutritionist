@@ -1,0 +1,43 @@
+
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: ai-nutritionist-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+      - ./redis.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    environment:
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+    networks:
+      - ai-nutritionist-network
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: ai-nutritionist-redis-ui
+    ports:
+      - "8081:8081"
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+    depends_on:
+      - redis
+    networks:
+      - ai-nutritionist-network
+
+volumes:
+  redis_data:
+
+networks:
+  ai-nutritionist-network:
+    driver: bridge

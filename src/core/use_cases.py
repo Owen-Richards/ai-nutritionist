@@ -13,8 +13,8 @@ from ..core.interfaces import (
     AIServiceInterface,
     NutritionDataInterface
 )
-from ..models.user import User
-from ..models.meal_plan import MealPlan
+from ..models.user import UserProfile
+from ..models.meal_planning import GeneratedMealPlan
 
 
 class NutritionChatUseCase:
@@ -41,14 +41,14 @@ class NutritionChatUseCase:
         else:
             await self._handle_existing_user(user, message)
     
-    async def _handle_new_user(self, user: User, message: str) -> None:
+    async def _handle_new_user(self, user: UserProfile, message: str) -> None:
         """Handle first-time user interaction."""
         # Progressive onboarding logic
         response = "Welcome! Let's start with your dietary preferences..."
         await self.messaging_service.send_message(user.id, response)
         await self.user_repository.save_user(user)
     
-    async def _handle_existing_user(self, user: User, message: str) -> None:
+    async def _handle_existing_user(self, user: UserProfile, message: str) -> None:
         """Handle returning user interaction."""
         # Determine intent and route to appropriate handler
         if "meal plan" in message.lower():
@@ -72,7 +72,7 @@ class MealPlanGenerationUseCase:
         self.ai_service = ai_service
         self.messaging_service = messaging_service
     
-    async def generate_meal_plan(self, user_id: str) -> MealPlan:
+    async def generate_meal_plan(self, user_id: str) -> GeneratedMealPlan:
         """Generate personalized meal plan for user."""
         user = await self.user_repository.get_user(user_id)
         if not user:
@@ -86,7 +86,7 @@ class MealPlanGenerationUseCase:
         
         return meal_plan
     
-    def _format_meal_plan_message(self, meal_plan: MealPlan) -> str:
+    def _format_meal_plan_message(self, meal_plan: GeneratedMealPlan) -> str:
         """Format meal plan for messaging."""
         return f"Here's your personalized meal plan:\n\n{meal_plan.summary}"
 

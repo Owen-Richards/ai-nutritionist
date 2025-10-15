@@ -15,8 +15,7 @@ from typing import Any, Dict, List, Optional, Set, Union
 from uuid import UUID
 
 try:
-    from src.models.analytics import (
-        BaseEvent,
+    from packages.core.src.entities.analytics import (        BaseEvent,
         EventType,
         ConsentType,
         PIILevel,
@@ -46,8 +45,7 @@ except ImportError:
     # Fallback for direct imports when running as module
     import sys, os
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
-    from src.models.analytics import (
-        BaseEvent,
+    from packages.core.src.entities.analytics import (        BaseEvent,
         EventType,
         ConsentType,
         PIILevel,

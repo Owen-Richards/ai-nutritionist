@@ -1,0 +1,31 @@
+# Feature Flag System Dependencies
+
+# Core dependencies
+pydantic>=2.0.0
+typing-extensions>=4.0.0
+
+# Optional LaunchDarkly integration
+launchdarkly-server-sdk>=8.0.0
+
+# Optional Redis caching
+redis>=4.0.0
+redis[hiredis]>=4.0.0
+
+# Web framework integrations (optional)
+fastapi>=0.100.0
+uvicorn>=0.20.0
+flask>=2.0.0
+
+# HTTP client for testing
+httpx>=0.24.0
+
+# Development and testing
+pytest>=7.0.0
+pytest-asyncio>=0.21.0
+pytest-mock>=3.10.0
+black>=23.0.0
+mypy>=1.0.0
+
+# Documentation
+mkdocs>=1.4.0
+mkdocs-material>=9.0.0

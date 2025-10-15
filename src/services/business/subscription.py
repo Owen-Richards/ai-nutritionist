@@ -12,8 +12,7 @@ from typing import Dict, Optional, Any
 from decimal import Decimal
 import json
 
-from src.utils.datetime_utils import utc_now
-
+from packages.shared.datetime_utils import utc_now
 logger = logging.getLogger(__name__)
 
 

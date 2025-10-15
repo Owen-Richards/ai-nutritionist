@@ -8,20 +8,47 @@ from datetime import datetime, date
 from typing import Dict, List, Optional, Any
 from enum import Enum
 
+# Shared types imports
+try:
+    from packages.shared.types import (
+        NonEmptyStr, NonNegativeFloat, PositiveInt, NonNegativeInt,
+        JSONDict, StringList, OptionalStr, OptionalFloat, DateTime,
+        CalorieCount, MacroGrams, UserID, MealID, PlanID
+    )
+    from packages.shared.types.literals import CuisineType
+except ImportError:
+    # Fallback for backward compatibility
+    from typing import Union
+    NonEmptyStr = str
+    NonNegativeFloat = float
+    PositiveInt = int
+    NonNegativeInt = int
+    JSONDict = Dict[str, Any]
+    StringList = List[str]
+    OptionalStr = Optional[str]
+    OptionalFloat = Optional[float]
+    DateTime = datetime
+    CalorieCount = float
+    MacroGrams = float
+    UserID = str
+    MealID = str
+    PlanID = str
+    CuisineType = str
+
 from src.config.constants import MealType
 
 
 @dataclass
 class Ingredient:
     """Individual ingredient with quantity and unit"""
-    name: str
-    quantity: float
-    unit: str
-    category: str = "other"  # produce, meat, dairy, etc.
-    estimated_cost: Optional[float] = None
-    nutrition_per_unit: Dict[str, float] = field(default_factory=dict)
+    name: NonEmptyStr
+    quantity: NonNegativeFloat
+    unit: NonEmptyStr
+    category: NonEmptyStr = "other"  # produce, meat, dairy, etc.
+    estimated_cost: OptionalFloat = None
+    nutrition_per_unit: Dict[str, NonNegativeFloat] = field(default_factory=dict)
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> JSONDict:
         return {
             'name': self.name,
             'quantity': self.quantity,
@@ -32,7 +59,7 @@ class Ingredient:
         }
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'Ingredient':
+    def from_dict(cls, data: JSONDict) -> 'Ingredient':
         return cls(
             name=data['name'],
             quantity=data['quantity'],
@@ -46,20 +73,20 @@ class Ingredient:
 @dataclass
 class NutritionInfo:
     """Nutritional information for a meal or recipe"""
-    calories: float
-    protein_grams: float
-    carbs_grams: float
-    fat_grams: float
-    fiber_grams: float = 0.0
-    sodium_mg: float = 0.0
-    sugar_grams: float = 0.0
+    calories: CalorieCount
+    protein_grams: MacroGrams
+    carbs_grams: MacroGrams
+    fat_grams: MacroGrams
+    fiber_grams: MacroGrams = 0.0
+    sodium_mg: NonNegativeFloat = 0.0
+    sugar_grams: MacroGrams = 0.0
     
     # Additional micronutrients (optional)
-    vitamin_c_mg: Optional[float] = None
-    iron_mg: Optional[float] = None
-    calcium_mg: Optional[float] = None
+    vitamin_c_mg: OptionalFloat = None
+    iron_mg: OptionalFloat = None
+    calcium_mg: OptionalFloat = None
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> JSONDict:
         return {
             'calories': self.calories,
             'protein_grams': self.protein_grams,
@@ -74,7 +101,7 @@ class NutritionInfo:
         }
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'NutritionInfo':
+    def from_dict(cls, data: JSONDict) -> 'NutritionInfo':
         return cls(
             calories=data['calories'],
             protein_grams=data['protein_grams'],
@@ -92,25 +119,25 @@ class NutritionInfo:
 @dataclass
 class Recipe:
     """Individual recipe with instructions and nutrition"""
-    name: str
+    name: NonEmptyStr
     ingredients: List[Ingredient]
-    instructions: List[str]
-    servings: int
-    prep_time_minutes: int
-    cook_time_minutes: int
+    instructions: StringList
+    servings: PositiveInt
+    prep_time_minutes: NonNegativeInt
+    cook_time_minutes: NonNegativeInt
     nutrition: NutritionInfo
-    cuisine_type: str = "american"
-    difficulty: str = "easy"  # easy, medium, hard
-    tags: List[str] = field(default_factory=list)
-    source_url: Optional[str] = None
-    image_url: Optional[str] = None
+    cuisine_type: NonEmptyStr = "american"
+    difficulty: NonEmptyStr = "easy"  # easy, medium, hard
+    tags: StringList = field(default_factory=list)
+    source_url: OptionalStr = None
+    image_url: OptionalStr = None
     
     @property
-    def total_time_minutes(self) -> int:
+    def total_time_minutes(self) -> NonNegativeInt:
         return self.prep_time_minutes + self.cook_time_minutes
     
     @property
-    def estimated_cost(self) -> float:
+    def estimated_cost(self) -> NonNegativeFloat:
         """Calculate estimated cost from ingredients"""
         total = 0.0
         for ingredient in self.ingredients:
@@ -158,7 +185,7 @@ class Recipe:
             image_url=self.image_url,
         )
     
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> JSONDict:
         return {
             'name': self.name,
             'ingredients': [ing.to_dict() for ing in self.ingredients],
@@ -175,7 +202,7 @@ class Recipe:
         }
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'Recipe':
+    def from_dict(cls, data: JSONDict) -> 'Recipe':
         return cls(
             name=data['name'],
             ingredients=[Ingredient.from_dict(ing) for ing in data['ingredients']],

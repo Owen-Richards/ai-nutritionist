@@ -1,0 +1,598 @@
+# Enhanced Security Policies for AI Nutritionist Service Mesh
+# Comprehensive mTLS, JWT validation, authorization, and rate limiting
+
+---
+# Global mTLS Policy
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: default-mtls
+  namespace: ai-nutritionist
+spec:
+  mtls:
+    mode: STRICT
+
+---
+# Permissive mTLS for specific services (development/testing)
+apiVersion: security.istio.io/v1beta1
+kind: PeerAuthentication
+metadata:
+  name: web-app-permissive
+  namespace: ai-nutritionist
+spec:
+  selector:
+    matchLabels:
+      app: web-app
+  mtls:
+    mode: PERMISSIVE
+
+---
+# JWT Authentication Policy for API Gateway
+apiVersion: security.istio.io/v1beta1
+kind: RequestAuthentication
+metadata:
+  name: jwt-auth
+  namespace: ai-nutritionist
+spec:
+  selector:
+    matchLabels:
+      app: istio-ingressgateway
+  jwtRules:
+  - issuer: "https://auth.ai-nutritionist.com"
+    jwksUri: "https://auth.ai-nutritionist.com/.well-known/jwks.json"
+    audiences:
+    - "ai-nutritionist-api"
+    - "ai-nutritionist-web"
+    forwardOriginalToken: true
+  - issuer: "https://accounts.google.com"
+    jwksUri: "https://www.googleapis.com/oauth2/v3/certs"
+    audiences:
+    - "ai-nutritionist-google-oauth"
+  - issuer: "https://appleid.apple.com"
+    jwksUri: "https://appleid.apple.com/auth/keys"
+    audiences:
+    - "ai-nutritionist-apple-signin"
+
+---
+# Service-specific JWT Authentication
+apiVersion: security.istio.io/v1beta1
+kind: RequestAuthentication
+metadata:
+  name: nutrition-service-jwt
+  namespace: ai-nutritionist
+spec:
+  selector:
+    matchLabels:
+      app: nutrition-service
+  jwtRules:
+  - issuer: "https://auth.ai-nutritionist.com"
+    jwksUri: "https://auth.ai-nutritionist.com/.well-known/jwks.json"
+    audiences:
+    - "nutrition-service"
+    outputPayloadToHeader: "x-jwt-payload"
+
+---
+apiVersion: security.istio.io/v1beta1
+kind: RequestAuthentication
+metadata:
+  name: ai-coach-service-jwt
+  namespace: ai-nutritionist
+spec:
+  selector:
+    matchLabels:
+      app: ai-coach-service
+  jwtRules:
+  - issuer: "https://auth.ai-nutritionist.com"
+    jwksUri: "https://auth.ai-nutritionist.com/.well-known/jwks.json"
+    audiences:
+    - "ai-coach-service"
+    outputPayloadToHeader: "x-jwt-payload"
+
+---
+# Enhanced Authorization Policies
+
+# Nutrition Service Authorization
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: nutrition-service-authz
+  namespace: ai-nutritionist
+spec:
+  selector:
+    matchLabels:
+      app: nutrition-service
+  rules:
+  # Allow authenticated users
+  - from:
+    - source:
+        requestPrincipals: ["https://auth.ai-nutritionist.com/*"]
+    to:
+    - operation:
+        methods: ["GET", "POST"]
+        paths: ["/api/v1/nutrition/*"]
+    when:
+    - key: request.auth.claims[sub]
+      notValues: [""]
+    - key: request.auth.claims[aud]
+      values: ["nutrition-service", "ai-nutritionist-api"]
+  # Allow internal service communication
+  - from:
+    - source:
+        principals: 
+        - "cluster.local/ns/ai-nutritionist/sa/ai-coach-service"
+        - "cluster.local/ns/ai-nutritionist/sa/messaging-service"
+    to:
+    - operation:
+        methods: ["GET", "POST"]
+  # Allow health checks
+  - from:
+    - source:
+        principals: ["cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account"]
+    to:
+    - operation:
+        methods: ["GET"]
+        paths: ["/health", "/ready"]
+
+---
+# AI Coach Service Authorization with Premium Features
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: ai-coach-service-authz
+  namespace: ai-nutritionist
+spec:
+  selector:
+    matchLabels:
+      app: ai-coach-service
+  rules:
+  # Premium users only
+  - from:
+    - source:
+        requestPrincipals: ["https://auth.ai-nutritionist.com/*"]
+    to:
+    - operation:
+        methods: ["POST"]
+        paths: ["/api/v1/ai-coach/*"]
+    when:
+    - key: request.auth.claims[subscription_tier]
+      values: ["premium", "enterprise"]
+    - key: request.auth.claims[aud]
+      values: ["ai-coach-service"]
+  # Internal service access
+  - from:
+    - source:
+        principals: 
+        - "cluster.local/ns/ai-nutritionist/sa/nutrition-service"
+        - "cluster.local/ns/ai-nutritionist/sa/messaging-service"
+    to:
+    - operation:
+        methods: ["POST"]
+  # Health checks
+  - from:
+    - source:
+        principals: ["cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account"]
+    to:
+    - operation:
+        methods: ["GET"]
+        paths: ["/health", "/ready"]
+
+---
+# Payment Service Authorization with Enhanced Security
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: payment-service-authz
+  namespace: ai-nutritionist
+spec:
+  selector:
+    matchLabels:
+      app: payment-service
+  rules:
+  # Verified users only
+  - from:
+    - source:
+        requestPrincipals: ["https://auth.ai-nutritionist.com/*"]
+    to:
+    - operation:
+        methods: ["POST", "GET"]
+        paths: ["/api/v1/payments/*"]
+    when:
+    - key: request.auth.claims[email_verified]
+      values: ["true"]
+    - key: request.auth.claims[phone_verified]
+      values: ["true"]
+    - key: request.headers[x-user-verified]
+      values: ["true"]
+    - key: request.auth.claims[aud]
+      values: ["ai-nutritionist-api"]
+  # Internal billing service access
+  - from:
+    - source:
+        principals: ["cluster.local/ns/ai-nutritionist/sa/billing-service"]
+    to:
+    - operation:
+        methods: ["POST", "GET"]
+  # Health checks
+  - from:
+    - source:
+        principals: ["cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account"]
+    to:
+    - operation:
+        methods: ["GET"]
+        paths: ["/health", "/ready"]
+
+---
+# Messaging Service Authorization
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: messaging-service-authz
+  namespace: ai-nutritionist
+spec:
+  selector:
+    matchLabels:
+      app: messaging-service
+  rules:
+  # Authenticated users
+  - from:
+    - source:
+        requestPrincipals: ["https://auth.ai-nutritionist.com/*"]
+    to:
+    - operation:
+        methods: ["POST", "GET"]
+        paths: ["/api/v1/messaging/*"]
+    when:
+    - key: request.auth.claims[aud]
+      values: ["ai-nutritionist-api"]
+  # Internal service access
+  - from:
+    - source:
+        principals: 
+        - "cluster.local/ns/ai-nutritionist/sa/nutrition-service"
+        - "cluster.local/ns/ai-nutritionist/sa/ai-coach-service"
+        - "cluster.local/ns/ai-nutritionist/sa/notification-service"
+    to:
+    - operation:
+        methods: ["POST"]
+  # Webhook access for external providers
+  - from:
+    - source:
+        notPrincipals: ["*"]
+    to:
+    - operation:
+        methods: ["POST"]
+        paths: ["/api/v1/messaging/webhook/*"]
+    when:
+    - key: request.headers[x-webhook-signature]
+      notValues: [""]
+  # Health checks
+  - from:
+    - source:
+        principals: ["cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account"]
+    to:
+    - operation:
+        methods: ["GET"]
+        paths: ["/health", "/ready"]
+
+---
+# Health Tracking Service Authorization
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: health-tracking-service-authz
+  namespace: ai-nutritionist
+spec:
+  selector:
+    matchLabels:
+      app: health-tracking-service
+  rules:
+  # Authenticated users
+  - from:
+    - source:
+        requestPrincipals: ["https://auth.ai-nutritionist.com/*"]
+    to:
+    - operation:
+        methods: ["GET", "POST", "PUT"]
+        paths: ["/api/v1/health/*"]
+    when:
+    - key: request.auth.claims[aud]
+      values: ["ai-nutritionist-api"]
+  # Internal service access
+  - from:
+    - source:
+        principals: 
+        - "cluster.local/ns/ai-nutritionist/sa/nutrition-service"
+        - "cluster.local/ns/ai-nutritionist/sa/ai-coach-service"
+    to:
+    - operation:
+        methods: ["GET", "POST"]
+  # Health checks
+  - from:
+    - source:
+        principals: ["cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account"]
+    to:
+    - operation:
+        methods: ["GET"]
+        paths: ["/health", "/ready"]
+
+---
+# Web Application Authorization
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: web-app-authz
+  namespace: ai-nutritionist
+spec:
+  selector:
+    matchLabels:
+      app: web-app
+  rules:
+  # Public access to static content
+  - from:
+    - source: {}
+    to:
+    - operation:
+        methods: ["GET"]
+        paths: ["/", "/static/*", "/assets/*", "/favicon.ico"]
+  # Authenticated access to app
+  - from:
+    - source:
+        requestPrincipals: ["https://auth.ai-nutritionist.com/*"]
+    to:
+    - operation:
+        methods: ["GET", "POST"]
+        paths: ["/app/*", "/dashboard/*", "/profile/*"]
+    when:
+    - key: request.auth.claims[aud]
+      values: ["ai-nutritionist-web"]
+
+---
+# Deny All Default Policy (Fail Secure)
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: deny-all-default
+  namespace: ai-nutritionist
+spec:
+  {}
+
+---
+# Allow Ingress Gateway
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-ingress-gateway
+  namespace: ai-nutritionist
+spec:
+  rules:
+  - from:
+    - source:
+        principals: ["cluster.local/ns/istio-system/sa/istio-ingressgateway-service-account"]
+
+---
+# Allow Istio System Services
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: allow-istio-system
+  namespace: ai-nutritionist
+spec:
+  rules:
+  - from:
+    - source:
+        namespaces: ["istio-system"]
+
+---
+# Admin Authorization Policy
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: admin-access
+  namespace: ai-nutritionist
+spec:
+  rules:
+  - from:
+    - source:
+        requestPrincipals: ["https://auth.ai-nutritionist.com/*"]
+    to:
+    - operation:
+        methods: ["GET", "POST", "PUT", "DELETE"]
+        paths: ["/admin/*"]
+    when:
+    - key: request.auth.claims[role]
+      values: ["admin", "super_admin"]
+    - key: request.auth.claims[aud]
+      values: ["ai-nutritionist-admin"]
+
+---
+# Rate Limiting Configuration using EnvoyFilter
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: rate-limit-filter
+  namespace: ai-nutritionist
+spec:
+  workloadSelector:
+    labels:
+      app: istio-ingressgateway
+  configPatches:
+  - applyTo: HTTP_FILTER
+    match:
+      context: GATEWAY
+      listener:
+        filterChain:
+          filter:
+            name: "envoy.filters.network.http_connection_manager"
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.filters.http.local_ratelimit
+        typed_config:
+          "@type": type.googleapis.com/udpa.type.v1.TypedStruct
+          type_url: type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+          value:
+            stat_prefix: rate_limiter
+            token_bucket:
+              max_tokens: 1000
+              tokens_per_fill: 100
+              fill_interval: 60s
+            filter_enabled:
+              runtime_key: rate_limit_enabled
+              default_value:
+                numerator: 100
+                denominator: HUNDRED
+            filter_enforced:
+              runtime_key: rate_limit_enforced
+              default_value:
+                numerator: 100
+                denominator: HUNDRED
+            response_headers_to_add:
+            - append: false
+              header:
+                key: x-rate-limited
+                value: 'true'
+
+---
+# Service-specific Rate Limiting for AI Coach Service
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: ai-coach-rate-limit
+  namespace: ai-nutritionist
+spec:
+  workloadSelector:
+    labels:
+      app: ai-coach-service
+  configPatches:
+  - applyTo: HTTP_FILTER
+    match:
+      context: SIDECAR_INBOUND
+      listener:
+        filterChain:
+          filter:
+            name: "envoy.filters.network.http_connection_manager"
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.filters.http.local_ratelimit
+        typed_config:
+          "@type": type.googleapis.com/udpa.type.v1.TypedStruct
+          type_url: type.googleapis.com/envoy.extensions.filters.http.local_ratelimit.v3.LocalRateLimit
+          value:
+            stat_prefix: ai_coach_rate_limiter
+            token_bucket:
+              max_tokens: 100
+              tokens_per_fill: 10
+              fill_interval: 60s
+            filter_enabled:
+              runtime_key: ai_coach_rate_limit_enabled
+              default_value:
+                numerator: 100
+                denominator: HUNDRED
+            filter_enforced:
+              runtime_key: ai_coach_rate_limit_enforced
+              default_value:
+                numerator: 100
+                denominator: HUNDRED
+
+---
+# Network Security Policy
+apiVersion: security.istio.io/v1beta1
+kind: AuthorizationPolicy
+metadata:
+  name: network-security
+  namespace: ai-nutritionist
+spec:
+  rules:
+  # Block suspicious patterns
+  - from: []
+    to: []
+    when:
+    - key: request.headers[user-agent]
+      values: ["*bot*", "*crawler*", "*scanner*"]
+    - key: request.headers[x-forwarded-for]
+      notValues: [""]
+  # Block requests without proper headers
+  - from: []
+    to:
+    - operation:
+        paths: ["/api/*"]
+    when:
+    - key: request.headers[content-type]
+      notValues: ["application/json", "application/x-www-form-urlencoded"]
+    - key: request.headers[authorization]
+      values: [""]
+
+---
+# Security Headers Configuration
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: security-headers
+  namespace: ai-nutritionist
+spec:
+  workloadSelector:
+    labels:
+      app: istio-ingressgateway
+  configPatches:
+  - applyTo: HTTP_FILTER
+    match:
+      context: GATEWAY
+      listener:
+        filterChain:
+          filter:
+            name: "envoy.filters.network.http_connection_manager"
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.filters.http.fault
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.fault.v3.HTTPFault
+          response_rate_limit:
+            fixed_limit:
+              limit_kbps: 1000
+          headers:
+          - name: x-frame-options
+            value: DENY
+          - name: x-content-type-options
+            value: nosniff
+          - name: x-xss-protection
+            value: "1; mode=block"
+          - name: strict-transport-security
+            value: "max-age=31536000; includeSubDomains"
+          - name: content-security-policy
+            value: "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
+
+---
+# CORS Configuration
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: cors-filter
+  namespace: ai-nutritionist
+spec:
+  workloadSelector:
+    labels:
+      app: istio-ingressgateway
+  configPatches:
+  - applyTo: HTTP_FILTER
+    match:
+      context: GATEWAY
+      listener:
+        filterChain:
+          filter:
+            name: "envoy.filters.network.http_connection_manager"
+    patch:
+      operation: INSERT_BEFORE
+      value:
+        name: envoy.filters.http.cors
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.filters.http.cors.v3.Cors
+          allow_origin_string_match:
+          - exact: "https://ai-nutritionist.com"
+          - exact: "https://www.ai-nutritionist.com"
+          - exact: "https://app.ai-nutritionist.com"
+          allow_methods: "GET, POST, PUT, DELETE, OPTIONS"
+          allow_headers: "authorization, content-type, x-requested-with, x-user-id"
+          max_age: "86400"
+          allow_credentials: true

@@ -15,8 +15,7 @@ def _wa_env(monkeypatch):
 
 
 def test_wa_cloud_send(monkeypatch):
-    from src.services.messaging.sms import WhatsAppCloudPlatform
-
+    from services.messaging_service.src.application.sms import WhatsAppCloudPlatform
     class Resp:
         status_code = 200
         text = "ok"
@@ -37,8 +36,7 @@ def test_wa_cloud_send(monkeypatch):
 
 
 def test_wa_cloud_validation():
-    from src.services.messaging.sms import WhatsAppCloudPlatform
-
+    from services.messaging_service.src.application.sms import WhatsAppCloudPlatform
     p = WhatsAppCloudPlatform()
     body = json.dumps({"object":"whatsapp_business_account","entry":[]})
     sig = hmac.new(b"appsecret", body.encode("utf-8"), hashlib.sha256).hexdigest()
@@ -47,8 +45,7 @@ def test_wa_cloud_validation():
 
 
 def test_wa_cloud_parse():
-    from src.services.messaging.sms import WhatsAppCloudPlatform
-
+    from services.messaging_service.src.application.sms import WhatsAppCloudPlatform
     p = WhatsAppCloudPlatform()
     payload = {
         "object":"whatsapp_business_account",

@@ -1,0 +1,1624 @@
+openapi: 3.1.0
+info:
+  title: AI Nutritionist API
+  version: 2.0.0
+  description: |
+    Comprehensive API for the AI Nutritionist platform providing meal planning, 
+    community features, gamification, analytics, infrastructure management, and integrations.
+    
+    ## Features
+    - **Meal Planning**: Generate personalized meal plans with feedback
+    - **Community**: Crews, reflections, and social features  
+    - **Gamification**: Progress tracking, challenges, and achievements
+    - **Analytics**: Usage tracking and insights
+    - **Infrastructure**: Monitoring, rate limiting, and compliance
+    - **Integrations**: Calendar, grocery, and fitness platform connections
+    
+    ## Authentication
+    All API endpoints require authentication via JWT tokens in the Authorization header:
+    ```
+    Authorization: Bearer <jwt_token>
+    ```
+    
+    ## Rate Limiting
+    - **Free tier**: 100 requests/hour
+    - **Premium tier**: 1000 requests/hour
+    - **Enterprise tier**: 10000 requests/hour
+    
+    Rate limit headers are included in all responses:
+    - `X-RateLimit-Limit`: Request limit per hour
+    - `X-RateLimit-Remaining`: Requests remaining in current window
+    - `X-RateLimit-Reset`: Time when limit resets (Unix timestamp)
+    
+    ## Error Handling
+    All errors follow RFC 7807 Problem Details format with consistent structure.
+
+  contact:
+    name: AI Nutritionist API Support
+    url: https://support.ai-nutritionist.com
+    email: api-support@ai-nutritionist.com
+  license:
+    name: Proprietary
+    url: https://ai-nutritionist.com/license
+  termsOfService: https://ai-nutritionist.com/terms
+
+servers:
+  - url: https://api.ai-nutritionist.com/v1
+    description: Production API
+  - url: https://staging-api.ai-nutritionist.com/v1
+    description: Staging API
+  - url: https://dev-api.ai-nutritionist.com/v1
+    description: Development API
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Authentication
+    description: User authentication and authorization
+  - name: Meal Planning
+    description: Generate and manage personalized meal plans
+  - name: Community
+    description: Social features, crews, and reflections
+  - name: Gamification
+    description: Progress tracking, challenges, and achievements
+  - name: Analytics
+    description: Usage analytics and insights
+  - name: Infrastructure
+    description: System monitoring and management
+  - name: Integrations
+    description: Third-party platform integrations
+  - name: Monetization
+    description: Billing and subscription management
+  - name: Webhooks
+    description: Event notifications and webhooks
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token obtained from authentication endpoint
+
+  schemas:
+    # Common schemas
+    Error:
+      type: object
+      required:
+        - type
+        - title
+        - status
+        - detail
+      properties:
+        type:
+          type: string
+          format: uri
+          description: URI identifying the problem type
+          example: "https://api.ai-nutritionist.com/problems/validation-error"
+        title:
+          type: string
+          description: Short, human-readable summary
+          example: "Validation Error"
+        status:
+          type: integer
+          description: HTTP status code
+          example: 400
+        detail:
+          type: string
+          description: Human-readable explanation
+          example: "The request body contains invalid data"
+        instance:
+          type: string
+          format: uri
+          description: URI identifying the specific occurrence
+          example: "/v1/plan/generate"
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              message:
+                type: string
+
+    PaginationMeta:
+      type: object
+      properties:
+        page:
+          type: integer
+          minimum: 1
+          example: 1
+        per_page:
+          type: integer
+          minimum: 1
+          maximum: 100
+          example: 20
+        total_pages:
+          type: integer
+          example: 5
+        total_count:
+          type: integer
+          example: 89
+        has_next:
+          type: boolean
+          example: true
+        has_prev:
+          type: boolean
+          example: false
+
+    # Meal Planning schemas
+    PlanPreferences:
+      type: object
+      properties:
+        dietary_restrictions:
+          type: array
+          items:
+            type: string
+            enum: [vegetarian, vegan, gluten_free, dairy_free, keto, paleo, low_carb, mediterranean]
+          example: ["vegetarian", "gluten_free"]
+        cuisine_preferences:
+          type: array
+          items:
+            type: string
+          example: ["italian", "mexican", "asian"]
+        budget_per_week:
+          type: number
+          minimum: 20
+          maximum: 500
+          example: 120.00
+        servings:
+          type: integer
+          minimum: 1
+          maximum: 8
+          example: 4
+        prep_time_preference:
+          type: string
+          enum: [quick, moderate, elaborate]
+          example: "moderate"
+        equipment_available:
+          type: array
+          items:
+            type: string
+          example: ["oven", "stovetop", "blender"]
+
+    PlanGenerateRequest:
+      type: object
+      required:
+        - user_id
+      properties:
+        user_id:
+          type: string
+          minLength: 3
+          example: "user_123456"
+        week_start:
+          type: string
+          format: date
+          description: "Week start date (Monday). Defaults to next Monday if not provided"
+          example: "2024-10-14"
+        force_new:
+          type: boolean
+          default: false
+          description: "Force generation of new plan even if one exists"
+        preferences:
+          $ref: '#/components/schemas/PlanPreferences'
+        context:
+          type: object
+          additionalProperties: true
+          example: {"previous_feedback": "more_protein", "health_goals": ["weight_loss"]}
+        metadata:
+          type: object
+          additionalProperties: true
+          example: {"source": "mobile_app", "version": "2.1.0"}
+
+    Meal:
+      type: object
+      properties:
+        meal_id:
+          type: string
+          example: "meal_789"
+        day:
+          type: string
+          enum: [monday, tuesday, wednesday, thursday, friday, saturday, sunday]
+          example: "monday"
+        meal_type:
+          type: string
+          enum: [breakfast, lunch, dinner, snack]
+          example: "dinner"
+        title:
+          type: string
+          example: "Mediterranean Quinoa Bowl"
+        description:
+          type: string
+          example: "Nutritious quinoa bowl with roasted vegetables, feta cheese, and tahini dressing"
+        ingredients:
+          type: array
+          items:
+            type: string
+          example: ["1 cup quinoa", "1 bell pepper", "1/2 cup feta cheese", "2 tbsp tahini"]
+        calories:
+          type: integer
+          minimum: 50
+          maximum: 2000
+          example: 520
+        prep_minutes:
+          type: integer
+          minimum: 5
+          maximum: 180
+          example: 30
+        macros:
+          type: object
+          properties:
+            protein:
+              type: number
+              example: 18.5
+            carbs:
+              type: number
+              example: 65.2
+            fat:
+              type: number
+              example: 15.8
+            fiber:
+              type: number
+              example: 8.2
+        cost:
+          type: number
+          minimum: 0
+          example: 8.50
+        tags:
+          type: array
+          items:
+            type: string
+          example: ["vegetarian", "mediterranean", "high_protein"]
+
+    GroceryItem:
+      type: object
+      required:
+        - name
+        - quantity
+      properties:
+        name:
+          type: string
+          example: "Quinoa"
+        quantity:
+          type: integer
+          minimum: 1
+          example: 2
+        unit:
+          type: string
+          example: "cups"
+        category:
+          type: string
+          example: "grains"
+        estimated_cost:
+          type: number
+          example: 4.99
+
+    PlanResponse:
+      type: object
+      properties:
+        plan_id:
+          type: string
+          example: "plan_abc123"
+        user_id:
+          type: string
+          example: "user_123456"
+        week_start:
+          type: string
+          format: date
+          example: "2024-10-14"
+        generated_at:
+          type: string
+          format: date-time
+          example: "2024-10-13T15:30:00Z"
+        estimated_cost:
+          type: number
+          example: 89.45
+        total_calories:
+          type: integer
+          example: 8400
+        meals:
+          type: array
+          items:
+            $ref: '#/components/schemas/Meal'
+        grocery_list:
+          type: array
+          items:
+            $ref: '#/components/schemas/GroceryItem'
+        metadata:
+          type: object
+          additionalProperties: true
+
+    PlanFeedbackRequest:
+      type: object
+      required:
+        - user_id
+        - plan_id
+        - meal_id
+        - rating
+      properties:
+        user_id:
+          type: string
+          minLength: 3
+          example: "user_123456"
+        plan_id:
+          type: string
+          minLength: 8
+          example: "plan_abc123"
+        meal_id:
+          type: string
+          minLength: 3
+          example: "meal_789"
+        rating:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: "Rating from 1 (poor) to 5 (excellent)"
+          example: 4
+        emoji:
+          type: string
+          maxLength: 8
+          example: "😋"
+        comment:
+          type: string
+          maxLength: 512
+          example: "Loved the flavors but could use more protein"
+        consumed_at:
+          type: string
+          format: date-time
+          example: "2024-10-13T18:30:00Z"
+
+    # Community schemas
+    JoinCrewRequest:
+      type: object
+      required:
+        - user_id
+        - crew_type
+      properties:
+        user_id:
+          type: string
+          example: "user_123456"
+        crew_type:
+          type: string
+          enum: [beginner, intermediate, advanced, weight_loss, muscle_gain, maintenance]
+          example: "weight_loss"
+        goals:
+          type: array
+          items:
+            type: string
+          example: ["lose_weight", "eat_healthier"]
+
+    ReflectionRequest:
+      type: object
+      required:
+        - user_id
+        - reflection_type
+        - content
+      properties:
+        user_id:
+          type: string
+          example: "user_123456"
+        reflection_type:
+          type: string
+          enum: [daily, weekly, monthly, milestone]
+          example: "daily"
+        content:
+          type: string
+          maxLength: 1000
+          example: "Today I managed to stick to my meal plan and felt more energetic"
+        tags:
+          type: array
+          items:
+            type: string
+          example: ["energy", "adherence"]
+        mood_score:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 4
+
+    # Gamification schemas
+    AdherenceRing:
+      type: object
+      properties:
+        percentage:
+          type: number
+          minimum: 0
+          maximum: 100
+          example: 85.5
+        level:
+          type: string
+          enum: [low, medium, high, excellent]
+          example: "high"
+        trend:
+          type: string
+          enum: [up, down, stable]
+          example: "up"
+        days_tracked:
+          type: integer
+          example: 7
+        target_percentage:
+          type: number
+          example: 80.0
+        ring_color:
+          type: string
+          format: color
+          example: "#39C0ED"
+
+    Streak:
+      type: object
+      properties:
+        current_days:
+          type: integer
+          example: 12
+        best_days:
+          type: integer
+          example: 25
+        category:
+          type: string
+          enum: [meal_logging, plan_adherence, reflection]
+          example: "meal_logging"
+        motivation_message:
+          type: string
+          example: "You're on fire! Keep it up!"
+
+    Challenge:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+        title:
+          type: string
+          maxLength: 50
+          example: "Daily Goal Master"
+        description:
+          type: string
+          maxLength: 200
+          example: "Complete all your meals for the day"
+        challenge_type:
+          type: string
+          enum: [daily_goal, weekly_streak, social_engagement]
+          example: "daily_goal"
+        status:
+          type: string
+          enum: [not_started, in_progress, completed, expired]
+          example: "in_progress"
+        progress:
+          type: number
+          minimum: 0
+          maximum: 1
+          example: 0.67
+        target_value:
+          type: integer
+          minimum: 1
+          example: 3
+        current_value:
+          type: integer
+          minimum: 0
+          example: 2
+        expires_at:
+          type: string
+          format: date-time
+          example: "2024-10-23T23:59:59Z"
+        reward_points:
+          type: integer
+          minimum: 0
+          example: 50
+        difficulty_level:
+          type: integer
+          minimum: 1
+          maximum: 5
+          example: 2
+
+    GamificationSummary:
+      type: object
+      properties:
+        user_id:
+          type: string
+          example: "user_123456"
+        adherence_ring:
+          $ref: '#/components/schemas/AdherenceRing'
+        current_streak:
+          $ref: '#/components/schemas/Streak'
+        active_challenge:
+          $ref: '#/components/schemas/Challenge'
+        level:
+          type: integer
+          example: 3
+        total_points:
+          type: integer
+          example: 2750
+        rank:
+          type: string
+          example: "Nutrition Explorer"
+        compact_message:
+          type: string
+          example: "86% adherence • 12 day streak"
+        primary_metric:
+          type: string
+          example: "86% adherence"
+        secondary_metrics:
+          type: array
+          items:
+            type: string
+          example: ["12 day streak", "Level 3", "2750 points"]
+        widget_deep_link:
+          type: string
+          format: uri
+          example: "ainutritionist://dashboard?user_id=user_123456"
+        last_updated:
+          type: string
+          format: date-time
+          example: "2024-10-13T15:30:00Z"
+
+    # Analytics schemas
+    AnalyticsEvent:
+      type: object
+      properties:
+        event_type:
+          type: string
+          enum: [plan_generated, meal_logged, reflection_submitted, crew_joined]
+          example: "plan_generated"
+        user_id:
+          type: string
+          example: "user_123456"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-10-13T15:30:00Z"
+        properties:
+          type: object
+          additionalProperties: true
+        context:
+          type: object
+          additionalProperties: true
+
+    # Integration schemas
+    CalendarAuthRequest:
+      type: object
+      required:
+        - provider
+        - redirect_uri
+      properties:
+        provider:
+          type: string
+          enum: [google, outlook, apple]
+          example: "google"
+        redirect_uri:
+          type: string
+          format: uri
+          example: "https://app.ai-nutritionist.com/integrations/calendar/callback"
+
+    CalendarEvent:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "cal_event_123"
+        title:
+          type: string
+          example: "Meal Prep: Mediterranean Quinoa Bowl"
+        start_time:
+          type: string
+          format: date-time
+          example: "2024-10-13T17:00:00Z"
+        end_time:
+          type: string
+          format: date-time
+          example: "2024-10-13T18:00:00Z"
+        description:
+          type: string
+          example: "Prepare quinoa bowl with roasted vegetables"
+
+    # Webhook schemas
+    WebhookEvent:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "webhook_123e4567-e89b-12d3-a456-426614174000"
+        event_type:
+          type: string
+          example: "plan.generated"
+        timestamp:
+          type: string
+          format: date-time
+          example: "2024-10-13T15:30:00Z"
+        data:
+          type: object
+          additionalProperties: true
+        api_version:
+          type: string
+          example: "2.0.0"
+
+  parameters:
+    UserIdParam:
+      name: user_id
+      in: path
+      required: true
+      description: User identifier
+      schema:
+        type: string
+        example: "user_123456"
+
+    PlanIdParam:
+      name: plan_id
+      in: path
+      required: true
+      description: Plan identifier
+      schema:
+        type: string
+        example: "plan_abc123"
+
+    PageParam:
+      name: page
+      in: query
+      description: Page number for pagination
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+
+    PerPageParam:
+      name: per_page
+      in: query
+      description: Number of items per page
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  responses:
+    UnauthorizedError:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            type: "https://api.ai-nutritionist.com/problems/unauthorized"
+            title: "Unauthorized"
+            status: 401
+            detail: "Valid authentication credentials required"
+
+    ForbiddenError:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            type: "https://api.ai-nutritionist.com/problems/forbidden"
+            title: "Forbidden" 
+            status: 403
+            detail: "Insufficient permissions to access this resource"
+
+    NotFoundError:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            type: "https://api.ai-nutritionist.com/problems/not-found"
+            title: "Not Found"
+            status: 404
+            detail: "The requested resource was not found"
+
+    ValidationError:
+      description: Request validation failed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            type: "https://api.ai-nutritionist.com/problems/validation-error"
+            title: "Validation Error"
+            status: 400
+            detail: "Request validation failed"
+            errors:
+              - field: "user_id"
+                message: "Field is required"
+
+    RateLimitError:
+      description: Rate limit exceeded
+      headers:
+        X-RateLimit-Limit:
+          description: Request limit per hour
+          schema:
+            type: integer
+        X-RateLimit-Remaining:
+          description: Requests remaining in current window
+          schema:
+            type: integer
+        X-RateLimit-Reset:
+          description: Time when limit resets (Unix timestamp)
+          schema:
+            type: integer
+        Retry-After:
+          description: Seconds to wait before retrying
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            type: "https://api.ai-nutritionist.com/problems/rate-limit-exceeded"
+            title: "Rate Limit Exceeded"
+            status: 429
+            detail: "Too many requests. Please try again later."
+
+    ServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            type: "https://api.ai-nutritionist.com/problems/internal-error"
+            title: "Internal Server Error"
+            status: 500
+            detail: "An unexpected error occurred"
+
+paths:
+  # Authentication endpoints
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: Initiate authentication
+      description: Begin authentication flow via magic link or OTP
+      operationId: initiateAuth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [channel, identifier]
+              properties:
+                channel:
+                  type: string
+                  enum: [sms, email]
+                  example: "sms"
+                identifier:
+                  type: string
+                  description: Phone number (E.164) or email address
+                  example: "+1234567890"
+            examples:
+              sms_auth:
+                summary: SMS Authentication
+                value:
+                  channel: "sms"
+                  identifier: "+1234567890"
+              email_auth:
+                summary: Email Authentication
+                value:
+                  channel: "email"
+                  identifier: "user@example.com"
+      responses:
+        '202':
+          description: Challenge sent successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: "Verification code sent"
+                  expires_in:
+                    type: integer
+                    description: Seconds until code expires
+                    example: 300
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /auth/verify:
+    post:
+      tags: [Authentication]
+      summary: Complete authentication
+      description: Verify OTP/magic link and receive JWT tokens
+      operationId: verifyAuth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [identifier, code]
+              properties:
+                identifier:
+                  type: string
+                  example: "+1234567890"
+                code:
+                  type: string
+                  example: "123456"
+      responses:
+        '200':
+          description: Authentication successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                    description: JWT access token
+                  refresh_token:
+                    type: string
+                    description: JWT refresh token
+                  expires_in:
+                    type: integer
+                    description: Access token expiration in seconds
+                    example: 3600
+                  token_type:
+                    type: string
+                    example: "Bearer"
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        example: "user_123456"
+                      email:
+                        type: string
+                        example: "user@example.com"
+                      phone:
+                        type: string
+                        example: "+1234567890"
+                      subscription_tier:
+                        type: string
+                        enum: [free, premium, enterprise]
+                        example: "premium"
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          description: Invalid verification code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /auth/refresh:
+    post:
+      tags: [Authentication]
+      summary: Refresh access token
+      description: Get new access token using refresh token
+      operationId: refreshToken
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        '200':
+          description: Token refreshed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                  expires_in:
+                    type: integer
+                    example: 3600
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  # Meal Planning endpoints
+  /plan/generate:
+    post:
+      tags: [Meal Planning]
+      summary: Generate meal plan
+      description: Create a personalized weekly meal plan for the user
+      operationId: generatePlan
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanGenerateRequest'
+            examples:
+              basic_plan:
+                summary: Basic meal plan
+                value:
+                  user_id: "user_123456"
+                  preferences:
+                    dietary_restrictions: ["vegetarian"]
+                    budget_per_week: 120.00
+                    servings: 4
+              advanced_plan:
+                summary: Advanced meal plan with preferences
+                value:
+                  user_id: "user_123456"
+                  week_start: "2024-10-14"
+                  preferences:
+                    dietary_restrictions: ["vegetarian", "gluten_free"]
+                    cuisine_preferences: ["mediterranean", "asian"]
+                    budget_per_week: 150.00
+                    servings: 2
+                    prep_time_preference: "quick"
+                  context:
+                    health_goals: ["weight_loss", "muscle_gain"]
+                    previous_feedback: "more_protein"
+      responses:
+        '201':
+          description: Meal plan generated successfully
+          headers:
+            X-RateLimit-Limit:
+              $ref: '#/components/responses/RateLimitError/headers/X-RateLimit-Limit'
+            X-RateLimit-Remaining:
+              $ref: '#/components/responses/RateLimitError/headers/X-RateLimit-Remaining'
+            X-RateLimit-Reset:
+              $ref: '#/components/responses/RateLimitError/headers/X-RateLimit-Reset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanResponse'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /plan/{plan_id}:
+    get:
+      tags: [Meal Planning]
+      summary: Get meal plan
+      description: Retrieve an existing meal plan by ID
+      operationId: getPlan
+      parameters:
+        - $ref: '#/components/parameters/PlanIdParam'
+      responses:
+        '200':
+          description: Meal plan retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanResponse'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /plan/{plan_id}/feedback:
+    post:
+      tags: [Meal Planning]
+      summary: Submit meal feedback
+      description: Provide feedback on a specific meal to improve future recommendations
+      operationId: submitFeedback
+      parameters:
+        - $ref: '#/components/parameters/PlanIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PlanFeedbackRequest'
+            examples:
+              positive_feedback:
+                summary: Positive feedback
+                value:
+                  user_id: "user_123456"
+                  plan_id: "plan_abc123"
+                  meal_id: "meal_789"
+                  rating: 5
+                  emoji: "😋"
+                  comment: "Absolutely delicious! Perfect seasoning."
+              improvement_feedback:
+                summary: Feedback with suggestions
+                value:
+                  user_id: "user_123456"
+                  plan_id: "plan_abc123"
+                  meal_id: "meal_789"
+                  rating: 3
+                  comment: "Good flavor but could use more protein"
+      responses:
+        '200':
+          description: Feedback submitted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "success"
+                  action:
+                    type: string
+                    example: "feedback_recorded"
+                  message:
+                    type: string
+                    example: "Thank you for your feedback! We'll use this to improve future recommendations."
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  # Community endpoints
+  /community/crews/join:
+    post:
+      tags: [Community]
+      summary: Join a crew
+      description: Join a community crew based on goals and preferences
+      operationId: joinCrew
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JoinCrewRequest'
+      responses:
+        '201':
+          description: Successfully joined crew
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  crew_id:
+                    type: string
+                    example: "crew_weight_loss_123"
+                  message:
+                    type: string
+                    example: "Welcome to the Weight Loss Warriors crew!"
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /community/reflections:
+    post:
+      tags: [Community]
+      summary: Submit reflection
+      description: Share a personal reflection with the community
+      operationId: submitReflection
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReflectionRequest'
+      responses:
+        '201':
+          description: Reflection submitted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  reflection_id:
+                    type: string
+                    example: "reflection_123"
+                  message:
+                    type: string
+                    example: "Your reflection has been shared with the community"
+                  pii_redacted:
+                    type: boolean
+                    example: false
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  # Gamification endpoints
+  /gamification/summary:
+    get:
+      tags: [Gamification]
+      summary: Get gamification summary
+      description: Retrieve complete gamification data optimized for mobile widget display
+      operationId: getGamificationSummary
+      parameters:
+        - name: user_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+          example: "123e4567-e89b-12d3-a456-426614174000"
+      responses:
+        '200':
+          description: Gamification summary retrieved successfully
+          headers:
+            ETag:
+              description: Entity tag for caching
+              schema:
+                type: string
+            Cache-Control:
+              description: Cache control directives
+              schema:
+                type: string
+                example: "max-age=600"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GamificationSummary'
+        '304':
+          description: Not Modified - cached version is still valid
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: User not found
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  # Analytics endpoints
+  /analytics/dashboard:
+    get:
+      tags: [Analytics]
+      summary: Get analytics dashboard
+      description: Retrieve comprehensive analytics dashboard data
+      operationId: getAnalyticsDashboard
+      parameters:
+        - name: start_date
+          in: query
+          description: Start date for analysis
+          schema:
+            type: string
+            format: date-time
+          example: "2024-10-01T00:00:00Z"
+        - name: end_date
+          in: query
+          description: End date for analysis
+          schema:
+            type: string
+            format: date-time
+          example: "2024-10-31T23:59:59Z"
+      responses:
+        '200':
+          description: Analytics dashboard data retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  summary:
+                    type: object
+                    properties:
+                      total_users:
+                        type: integer
+                        example: 15420
+                      active_users:
+                        type: integer
+                        example: 8765
+                      plans_generated:
+                        type: integer
+                        example: 45231
+                      engagement_rate:
+                        type: number
+                        example: 0.673
+                  metrics:
+                    type: object
+                    additionalProperties: true
+                  trends:
+                    type: array
+                    items:
+                      type: object
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /analytics/events:
+    post:
+      tags: [Analytics]
+      summary: Track analytics event
+      description: Record an analytics event for tracking and insights
+      operationId: trackEvent
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AnalyticsEvent'
+      responses:
+        '202':
+          description: Event tracked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "accepted"
+                  event_id:
+                    type: string
+                    example: "event_123"
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '429':
+          $ref: '#/components/responses/RateLimitError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  # Infrastructure endpoints  
+  /infrastructure/health:
+    get:
+      tags: [Infrastructure]
+      summary: Health check
+      description: Check health status of all infrastructure services
+      operationId: healthCheck
+      responses:
+        '200':
+          description: System is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "healthy"
+                  services:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        status:
+                          type: string
+                          enum: [healthy, degraded, unhealthy]
+                        response_time_ms:
+                          type: number
+                        last_check:
+                          type: string
+                          format: date-time
+                  timestamp:
+                    type: string
+                    format: date-time
+                    example: "2024-10-13T15:30:00Z"
+        '503':
+          description: Service unavailable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "unhealthy"
+                  errors:
+                    type: array
+                    items:
+                      type: string
+
+  /infrastructure/rate-limit/status/{identifier}:
+    get:
+      tags: [Infrastructure]
+      summary: Get rate limit status
+      description: Check current rate limit status for an identifier
+      operationId: getRateLimitStatus
+      parameters:
+        - name: identifier
+          in: path
+          required: true
+          description: Rate limit identifier (user ID, IP, etc.)
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Rate limit status retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  identifier:
+                    type: string
+                  blocked:
+                    type: boolean
+                  blocked_until:
+                    type: string
+                    format: date-time
+                  rules:
+                    type: object
+                    additionalProperties: true
+                  timestamp:
+                    type: string
+                    format: date-time
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '403':
+          $ref: '#/components/responses/ForbiddenError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  # Integration endpoints
+  /integrations/calendar/auth:
+    post:
+      tags: [Integrations]
+      summary: Initiate calendar authentication
+      description: Start OAuth flow for calendar integration
+      operationId: initiateCalendarAuth
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CalendarAuthRequest'
+      responses:
+        '200':
+          description: Authorization URL generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authorization_url:
+                    type: string
+                    format: uri
+                    example: "https://accounts.google.com/oauth/authorize?..."
+                  state:
+                    type: string
+                    example: "random_state_string"
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /integrations/calendar/events:
+    post:
+      tags: [Integrations]
+      summary: Create calendar events
+      description: Create calendar events for meal preparation and cooking
+      operationId: createCalendarEvents
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - meal_plan_id
+              properties:
+                meal_plan_id:
+                  type: string
+                  format: uuid
+                  example: "123e4567-e89b-12d3-a456-426614174000"
+                prep_time_minutes:
+                  type: integer
+                  minimum: 5
+                  maximum: 180
+                  default: 30
+                  example: 30
+                cook_time_minutes:
+                  type: integer
+                  minimum: 5
+                  maximum: 180
+                  default: 45
+                  example: 45
+                send_reminders:
+                  type: boolean
+                  default: true
+      responses:
+        '201':
+          description: Calendar events created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events_created:
+                    type: integer
+                    example: 14
+                  calendar_event_ids:
+                    type: array
+                    items:
+                      type: string
+                    example: ["cal_event_1", "cal_event_2"]
+        '400':
+          $ref: '#/components/responses/ValidationError'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          $ref: '#/components/responses/NotFoundError'
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  # Webhook endpoints
+  /webhooks/stripe:
+    post:
+      tags: [Webhooks]
+      summary: Stripe webhook handler
+      description: Handle Stripe webhook events for billing
+      operationId: handleStripeWebhook
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/WebhookEvent'
+      responses:
+        '200':
+          description: Webhook processed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received:
+                    type: boolean
+                    example: true
+        '400':
+          description: Invalid webhook payload
+        '401':
+          description: Invalid webhook signature
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+  /webhooks/messaging/{platform}:
+    post:
+      tags: [Webhooks]
+      summary: Messaging platform webhook
+      description: Handle incoming messages from various messaging platforms
+      operationId: handleMessagingWebhook
+      parameters:
+        - name: platform
+          in: path
+          required: true
+          description: Messaging platform
+          schema:
+            type: string
+            enum: [whatsapp, sms, telegram, messenger]
+      requestBody:
+        required: true
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              type: object
+              additionalProperties: true
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Message processed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  platform:
+                    type: string
+                    example: "whatsapp"
+        '400':
+          description: Invalid message format
+        '403':
+          description: Invalid webhook signature
+        '500':
+          $ref: '#/components/responses/ServerError'
+
+x-webhooks:
+  plan-generated:
+    post:
+      summary: Plan Generated
+      description: Triggered when a new meal plan is generated
+      requestBody:
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/WebhookEvent'
+                - type: object
+                  properties:
+                    event_type:
+                      example: "plan.generated"
+                    data:
+                      $ref: '#/components/schemas/PlanResponse'
+      responses:
+        '200':
+          description: Webhook received successfully
+
+  feedback-submitted:
+    post:
+      summary: Feedback Submitted
+      description: Triggered when user submits meal feedback
+      requestBody:
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/WebhookEvent'
+                - type: object
+                  properties:
+                    event_type:
+                      example: "feedback.submitted"
+                    data:
+                      $ref: '#/components/schemas/PlanFeedbackRequest'
+      responses:
+        '200':
+          description: Webhook received successfully
+
+  subscription-updated:
+    post:
+      summary: Subscription Updated
+      description: Triggered when user subscription status changes
+      requestBody:
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/WebhookEvent'
+                - type: object
+                  properties:
+                    event_type:
+                      example: "subscription.updated"
+                    data:
+                      type: object
+                      properties:
+                        user_id:
+                          type: string
+                        subscription_tier:
+                          type: string
+                          enum: [free, premium, enterprise]
+                        status:
+                          type: string
+                          enum: [active, canceled, expired]
+      responses:
+        '200':
+          description: Webhook received successfully

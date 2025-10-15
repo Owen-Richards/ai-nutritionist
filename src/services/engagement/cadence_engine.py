@@ -7,10 +7,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, List, Optional, Sequence
 from uuid import UUID
 
-from src.models.analytics import EventType
-from src.models.user import InventoryLink, UserGoal, UserProfile
-from src.services.analytics.analytics_service import AnalyticsService
-
+from packages.core.src.entities.analytics import EventTypefrom packages.core.src.entities.user import InventoryLink, UserGoal, UserProfilefrom services.analytics_service.src.application.analytics_service import AnalyticsService
 
 @dataclass
 class OutreachPlan:

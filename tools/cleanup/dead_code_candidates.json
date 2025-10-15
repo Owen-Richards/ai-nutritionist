@@ -1,0 +1,74 @@
+{
+  "metadata": {
+    "generated": "2025-10-14",
+    "detection_methods": [
+      "import_analysis",
+      "grep_reference_check",
+      "test_coverage_correlation",
+      "manual_inspection"
+    ],
+    "confidence_levels": {
+      "high": "90%+ confidence - no references found",
+      "medium": "70-90% confidence - minimal references",
+      "low": "50-70% confidence - needs verification"
+    }
+  },
+  "dead_code_candidates": [],
+  "unused_imports": {
+    "status": "needs_tool_scan",
+    "recommendation": "Run: ruff check --select F401 src/ or autoflake --check --recursive src/",
+    "estimated_count": "10-30 files",
+    "action": "automated_cleanup"
+  },
+  "unreferenced_functions": {
+    "status": "needs_deep_scan",
+    "recommendation": "Run: vulture src/ --min-confidence 80",
+    "note": "Test helpers and fixtures may be flagged incorrectly"
+  },
+  "potential_dead_modules": {
+    "compliance_automation_framework": {
+      "path": "compliance-automation/",
+      "confidence": "high",
+      "evidence": [
+        "No imports from main codebase",
+        "Separate requirements.txt",
+        "Standalone deployment script",
+        "Not referenced in tests/",
+        "Not referenced in src/",
+        "Not referenced in infrastructure/",
+        "Has own src/ subdirectory structure"
+      ],
+      "size": "~3000 lines of code",
+      "decision": "REQUIRES_ASSESSMENT",
+      "options": [
+        "A) Integrate into packages/compliance/ if needed",
+        "B) Move to separate repository if standalone project",
+        "C) Archive to docs/archive/ if obsolete",
+        "D) Delete if accidental inclusion"
+      ],
+      "recommendation": "Investigate purpose with team before removal"
+    }
+  },
+  "deprecated_patterns": {
+    "old_error_handling": {
+      "confidence": "low",
+      "description": "Some services may use old error handling patterns",
+      "action": "audit_and_modernize",
+      "references": "Check against src/utils/error_handling.py standards"
+    }
+  },
+  "test_only_code": {
+    "note": "Code used only in tests should stay - not dead code",
+    "examples": [
+      "tests/fixtures/",
+      "tests/conftest.py helpers",
+      "Mock/stub implementations"
+    ]
+  },
+  "summary": {
+    "high_confidence_dead_code": 0,
+    "medium_confidence_dead_code": 0,
+    "needs_tool_verification": 1,
+    "action_required": "Run automated tools for unused imports/variables"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "title": "Plans",
+  "description": "Review the week. Tap a day to request edits or swaps.",
+  "weekOf": "Week of {{date, date}}",
+  "dayHeading": "{{date, weekday}}",
+  "empty": {
+    "title": "No plans yet",
+    "body": "Once your coach creates a plan, it will appear here."
+  },
+  "error": {
+    "title": "Plans unavailable",
+    "body": "We could not load your plans. Pull to refresh to try again."
+  }
+}

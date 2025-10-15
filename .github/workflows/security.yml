@@ -1,0 +1,508 @@
+name: 🔒 Security & Compliance
+
+on:
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  push:
+    branches: [main, develop]
+    paths:
+      - 'src/**'
+      - 'requirements*.txt'
+      - 'package.json'
+      - 'yarn.lock'
+      - 'Dockerfile*'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'requirements*.txt'
+      - 'package.json'
+      - 'yarn.lock'
+      - 'Dockerfile*'
+  workflow_dispatch:
+    inputs:
+      scan_type:
+        description: 'Type of security scan'
+        required: true
+        default: 'full'
+        type: choice
+        options:
+          - full
+          - dependencies
+          - secrets
+          - code
+          - containers
+
+env:
+  PYTHON_VERSION: '3.13'
+  NODE_VERSION: '20'
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  dependency-scan:
+    name: 🔍 Dependency Security Scan
+    runs-on: ubuntu-latest
+    if: contains(fromJson('["full", "dependencies"]'), github.event.inputs.scan_type) || github.event.inputs.scan_type == null
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Python dependencies
+        run: |
+          pip install --upgrade pip
+          pip install safety pip-audit bandit[toml]
+
+      - name: Python dependency vulnerability scan
+        run: |
+          # Safety check for known vulnerabilities
+          safety check --json --output safety-report.json || true
+          safety check --short-report
+          
+          # pip-audit for additional checks
+          pip-audit --desc --format=json --output=pip-audit-report.json || true
+          pip-audit --desc
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
+      - name: Install Node.js dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Node.js dependency audit
+        run: |
+          # Yarn audit
+          yarn audit --json > yarn-audit-report.json || true
+          yarn audit
+          
+          # Additional security check with audit-ci
+          npx audit-ci --config audit-ci.json
+
+      - name: License compliance check
+        run: |
+          # Python license check
+          pip install pip-licenses
+          pip-licenses --format json --output-file python-licenses.json
+          pip-licenses --format table
+          
+          # Node.js license check
+          npx license-checker --json --out node-licenses.json
+          npx license-checker --summary
+
+      - name: Upload dependency scan results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: dependency-scan-results
+          path: |
+            safety-report.json
+            pip-audit-report.json
+            yarn-audit-report.json
+            python-licenses.json
+            node-licenses.json
+
+  secrets-scan:
+    name: 🔐 Secrets Detection
+    runs-on: ubuntu-latest
+    if: contains(fromJson('["full", "secrets"]'), github.event.inputs.scan_type) || github.event.inputs.scan_type == null
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: TruffleHog Secrets Scan
+        uses: trufflesecurity/trufflehog@main
+        with:
+          path: ./
+          base: main
+          head: HEAD
+          extra_args: --debug --only-verified
+
+      - name: GitLeaks Secrets Scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+      - name: Detect hardcoded secrets
+        run: |
+          # Custom regex patterns for potential secrets
+          echo "🔍 Scanning for potential hardcoded secrets..."
+          
+          # AWS keys pattern
+          grep -r -E "(AKIA[0-9A-Z]{16})" . --exclude-dir=.git || true
+          
+          # API keys pattern
+          grep -r -E "(api_key|apikey|api-key).*['\"][0-9a-zA-Z]{32,}['\"]" . --exclude-dir=.git || true
+          
+          # Database URLs
+          grep -r -E "(mongodb://|postgres://|mysql://)" . --exclude-dir=.git || true
+          
+          # JWT tokens
+          grep -r -E "eyJ[A-Za-z0-9-_=]+\." . --exclude-dir=.git || true
+
+      - name: Environment variable validation
+        run: |
+          # Check for sensitive env vars in code
+          python scripts/validate_env_vars.py
+
+  code-security-scan:
+    name: 🛡️ Static Code Security Analysis
+    runs-on: ubuntu-latest
+    if: contains(fromJson('["full", "code"]'), github.event.inputs.scan_type) || github.event.inputs.scan_type == null
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install security tools
+        run: |
+          pip install bandit[toml] semgrep safety
+
+      - name: Bandit Security Scan
+        run: |
+          bandit -r src/ -f json -o bandit-report.json
+          bandit -r src/ -ll
+
+      - name: Semgrep Security Scan
+        uses: returntocorp/semgrep-action@v1
+        with:
+          config: >-
+            p/security-audit
+            p/secrets
+            p/owasp-top-ten
+            p/python
+            p/javascript
+            p/typescript
+
+      - name: CodeQL Analysis
+        uses: github/codeql-action/init@v2
+        with:
+          languages: python, javascript
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v2
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v2
+
+      - name: Setup Node.js for ESLint security
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
+      - name: Install Node dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: ESLint Security Scan
+        run: |
+          npx eslint . --ext .js,.ts,.jsx,.tsx \
+            --config .eslintrc.security.js \
+            --format json \
+            --output-file eslint-security-report.json || true
+
+      - name: Upload code security results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: code-security-results
+          path: |
+            bandit-report.json
+            eslint-security-report.json
+
+  container-security-scan:
+    name: 🐳 Container Security Scan
+    runs-on: ubuntu-latest
+    if: contains(fromJson('["full", "containers"]'), github.event.inputs.scan_type) || github.event.inputs.scan_type == null
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build test image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          tags: security-test:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Trivy Container Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'security-test:latest'
+          format: 'json'
+          output: 'trivy-container-report.json'
+
+      - name: Trivy Container Scan (Table)
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'security-test:latest'
+          format: 'table'
+
+      - name: Hadolint Dockerfile Scan
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          format: json
+          output-file: hadolint-report.json
+
+      - name: Dockle Container Linter
+        run: |
+          # Install dockle
+          curl -L -o dockle.tar.gz https://github.com/goodwithtech/dockle/releases/latest/download/dockle_Linux-64bit.tar.gz
+          tar zxvf dockle.tar.gz
+          sudo mv dockle /usr/local/bin
+          
+          # Run dockle scan
+          dockle --format json --output dockle-report.json security-test:latest
+          dockle security-test:latest
+
+      - name: Container structure test
+        run: |
+          # Install container-structure-test
+          curl -LO https://storage.googleapis.com/container-structure-test/latest/container-structure-test-linux-amd64
+          chmod +x container-structure-test-linux-amd64
+          sudo mv container-structure-test-linux-amd64 /usr/local/bin/container-structure-test
+          
+          # Run structure tests
+          container-structure-test test --image security-test:latest --config tests/container-structure-test.yaml
+
+      - name: Upload container security results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: container-security-results
+          path: |
+            trivy-container-report.json
+            hadolint-report.json
+            dockle-report.json
+
+  infrastructure-security:
+    name: 🏗️ Infrastructure Security Scan
+    runs-on: ubuntu-latest
+    if: contains(fromJson('["full"]'), github.event.inputs.scan_type) || github.event.inputs.scan_type == null
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Checkov IaC Security Scan
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: .
+          framework: cloudformation,terraform,kubernetes,helm,arm,bicep,dockerfile
+          output_format: json
+          output_file_path: checkov-report.json
+
+      - name: Trivy IaC Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          scan-ref: '.'
+          format: 'json'
+          output: 'trivy-iac-report.json'
+
+      - name: TFSec Terraform Security Scan
+        if: contains(github.event.head_commit.message, 'terraform') || contains(github.event.head_commit.message, '.tf')
+        uses: aquasecurity/tfsec-action@v1.0.3
+        with:
+          format: json
+          soft_fail: true
+
+      - name: Upload infrastructure security results
+        uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: infrastructure-security-results
+          path: |
+            checkov-report.json
+            trivy-iac-report.json
+
+  compliance-check:
+    name: 📋 Compliance Verification
+    runs-on: ubuntu-latest
+    if: contains(fromJson('["full"]'), github.event.inputs.scan_type) || github.event.inputs.scan_type == null
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: GDPR Compliance Check
+        run: |
+          # Check for GDPR compliance patterns
+          python scripts/gdpr_compliance_check.py
+
+      - name: HIPAA Compliance Check
+        run: |
+          # Check for HIPAA compliance patterns
+          python scripts/hipaa_compliance_check.py
+
+      - name: SOC2 Compliance Check
+        run: |
+          # Check for SOC2 compliance patterns
+          python scripts/soc2_compliance_check.py
+
+      - name: Data Privacy Scan
+        run: |
+          # Scan for potential PII/PHI in code
+          grep -r -i -E "(ssn|social.security|credit.card|passport)" src/ || true
+          grep -r -i -E "(email|phone|address)" src/ | head -20 || true
+
+      - name: Generate compliance report
+        run: |
+          python scripts/generate_compliance_report.py \
+            --output compliance-report.html
+
+      - name: Upload compliance results
+        uses: actions/upload-artifact@v3
+        with:
+          name: compliance-results
+          path: compliance-report.html
+
+  security-reporting:
+    name: 📊 Security Reporting
+    runs-on: ubuntu-latest
+    needs: [dependency-scan, secrets-scan, code-security-scan, container-security-scan, infrastructure-security, compliance-check]
+    if: always()
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all security artifacts
+        uses: actions/download-artifact@v3
+
+      - name: Install reporting dependencies
+        run: |
+          pip install jinja2 markdown pdfkit
+
+      - name: Generate comprehensive security report
+        run: |
+          python scripts/generate_security_report.py \
+            --dependency-results dependency-scan-results/ \
+            --code-results code-security-results/ \
+            --container-results container-security-results/ \
+            --infrastructure-results infrastructure-security-results/ \
+            --compliance-results compliance-results/ \
+            --output security-dashboard.html
+
+      - name: Security metrics calculation
+        run: |
+          python scripts/calculate_security_metrics.py \
+            --output security-metrics.json
+
+      - name: Upload security dashboard
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-dashboard
+          path: |
+            security-dashboard.html
+            security-metrics.json
+
+      - name: Update security status
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            
+            // Read security metrics
+            const metrics = JSON.parse(fs.readFileSync('security-metrics.json', 'utf8'));
+            
+            // Create security status comment
+            const criticalIssues = metrics.critical || 0;
+            const highIssues = metrics.high || 0;
+            const mediumIssues = metrics.medium || 0;
+            
+            let status = '🟢 SECURE';
+            if (criticalIssues > 0) {
+              status = '🔴 CRITICAL ISSUES FOUND';
+            } else if (highIssues > 0) {
+              status = '🟠 HIGH RISK ISSUES FOUND';
+            } else if (mediumIssues > 5) {
+              status = '🟡 MEDIUM RISK ISSUES FOUND';
+            }
+            
+            const body = `## Security Scan Results
+            
+            **Status**: ${status}
+            
+            ### Issue Summary
+            - 🔴 Critical: ${criticalIssues}
+            - 🟠 High: ${highIssues}
+            - 🟡 Medium: ${mediumIssues}
+            - 🔵 Low: ${metrics.low || 0}
+            
+            ### Scan Coverage
+            - ✅ Dependency vulnerabilities
+            - ✅ Secret detection
+            - ✅ Static code analysis
+            - ✅ Container security
+            - ✅ Infrastructure configuration
+            - ✅ Compliance verification
+            
+            [View detailed security report](${context.server_url}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})`;
+            
+            if (context.eventName === 'pull_request') {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                body: body
+              });
+            }
+
+  security-alerts:
+    name: 🚨 Security Alerts
+    runs-on: ubuntu-latest
+    needs: [security-reporting]
+    if: always() && (needs.dependency-scan.result == 'failure' || needs.code-security-scan.result == 'failure' || needs.container-security-scan.result == 'failure')
+    
+    steps:
+      - name: Create security incident
+        uses: actions/github-script@v6
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `🚨 Security Alert - Critical vulnerabilities detected`,
+              body: `Critical security vulnerabilities have been detected in the codebase.
+              
+              **Immediate Action Required**
+              
+              Please review the security scan results and address critical issues immediately.
+              
+              [View security scan results](${context.server_url}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
+              
+              This issue was automatically created by the security scanning pipeline.`,
+              labels: ['security', 'critical', 'bug'],
+              assignees: ['security-team']
+            });
+
+      - name: Notify security team
+        run: |
+          echo "🚨 Critical security issues detected - security team has been notified"

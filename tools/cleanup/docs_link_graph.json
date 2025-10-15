@@ -1,0 +1,200 @@
+{
+  "metadata": {
+    "generated": "2025-10-14",
+    "analysis_method": "markdown_link_graph_construction"
+  },
+  "active_documentation": {
+    "root_readme": {
+      "file": "README.md",
+      "links_to": [
+        "docs/",
+        "infrastructure/terraform/README.md",
+        "tests/"
+      ],
+      "status": "KEEP_ACTIVE"
+    },
+    "primary_guides": [
+      {
+        "file": "docs/README.md",
+        "purpose": "Main documentation hub",
+        "status": "KEEP_ACTIVE"
+      },
+      {
+        "file": "docs/MONITORING_USAGE_GUIDE.md",
+        "purpose": "Active usage guide for monitoring",
+        "referenced_by": ["docs/README.md"],
+        "status": "KEEP_ACTIVE"
+      },
+      {
+        "file": "docs/GLOBAL_DEPLOYMENT_GUIDE.md",
+        "purpose": "Production deployment instructions",
+        "status": "KEEP_ACTIVE"
+      },
+      {
+        "file": "infrastructure/terraform/README.md",
+        "purpose": "Infrastructure documentation",
+        "status": "KEEP_ACTIVE"
+      },
+      {
+        "file": ".codex/quick_reference.md",
+        "purpose": "AI agent quick reference",
+        "status": "KEEP_ACTIVE"
+      }
+    ]
+  },
+  "redundant_documentation": {
+    "cleanup_summaries": [
+      {
+        "file": "docs/SCRIPT_CLEANUP_SUMMARY.md",
+        "confidence": "high",
+        "reason": "Documents past cleanup - historical record only",
+        "referenced_by": [],
+        "links_to": [],
+        "last_purpose": "Documented migration of standalone scripts into services",
+        "decision": "ARCHIVE",
+        "action": "Move to docs/archive/cleanup/SCRIPT_CLEANUP_SUMMARY.md"
+      },
+      {
+        "file": "infrastructure/CLEANUP_SUMMARY.md",
+        "confidence": "high",
+        "reason": "Duplicate cleanup documentation - same content as docs/SCRIPT_CLEANUP_SUMMARY.md",
+        "referenced_by": [],
+        "links_to": [],
+        "decision": "ARCHIVE",
+        "action": "Move to docs/archive/cleanup/INFRASTRUCTURE_CLEANUP_SUMMARY.md"
+      }
+    ],
+    "implementation_summaries": [
+      {
+        "pattern": "*_SUMMARY.md",
+        "count": 12,
+        "files": [
+          "AI_OPTIMIZATION_SUMMARY.md",
+          "COST_OPTIMIZATION_SUMMARY.md",
+          "CI_CD_IMPLEMENTATION_SUMMARY.md",
+          "DATA_QUALITY_IMPLEMENTATION_SUMMARY.md",
+          "E2E_TEST_IMPLEMENTATION_SUMMARY.md",
+          "RATE_LIMITING_IMPLEMENTATION_SUMMARY.md",
+          "packages/shared/error-handling/IMPLEMENTATION_SUMMARY.md",
+          "packages/core/src/events/IMPLEMENTATION_SUMMARY.md",
+          "packages/core/src/container/IMPLEMENTATION_SUMMARY.md",
+          "k8s/istio/SERVICE_MESH_IMPLEMENTATION_SUMMARY.md"
+        ],
+        "assessment": "Implementation records - useful for context",
+        "decision": "CONSOLIDATE",
+        "action": "Consider consolidating into docs/IMPLEMENTATION_HISTORY.md"
+      },
+      {
+        "pattern": "*_COMPLETE.md",
+        "count": 15,
+        "files": [
+          "BACKUP_IMPLEMENTATION_COMPLETE.md",
+          "COMPREHENSIVE_SECURITY_TESTING_COMPLETE.md",
+          "COMPREHENSIVE_TEST_COVERAGE_COMPLETE.md",
+          "COST_OPTIMIZATION_COMPLETE.md",
+          "DATABASE_OPTIMIZATION_COMPLETE.md",
+          "DEVELOPMENT_TOOLS_COMPLETE.md",
+          "FEATURE_FLAGS_COMPLETE.md",
+          "FIXTURE_SYSTEM_COMPLETE.md",
+          "REGRESSION_TESTING_COMPLETE.md",
+          "SECURITY_IMPLEMENTATION_COMPLETE.md",
+          "STRUCTURED_LOGGING_COMPLETE.md",
+          "chaos-engineering/IMPLEMENTATION_COMPLETE.md",
+          "infrastructure/TERRAFORM_INFRASTRUCTURE_COMPLETE.md",
+          "performance/comprehensive/PERFORMANCE_TESTING_COMPLETE.md",
+          "packages/core/src/container/DI_IMPLEMENTATION_COMPLETE.md"
+        ],
+        "assessment": "Feature completion markers - historical value",
+        "decision": "CONSOLIDATE",
+        "action": "Consider consolidating into docs/FEATURES_IMPLEMENTED.md"
+      }
+    ],
+    "specialized_docs": [
+      {
+        "file": "HEXAGONAL_ARCHITECTURE_REFACTORING.md",
+        "confidence": "medium",
+        "reason": "Architecture decision record - historical",
+        "decision": "KEEP_OR_MOVE",
+        "action": "Move to docs/architecture/ or docs/archive/"
+      },
+      {
+        "file": "HEXAGONAL_ARCHITECTURE_SUCCESS.md",
+        "confidence": "medium",
+        "reason": "Post-implementation summary",
+        "decision": "CONSOLIDATE",
+        "action": "Merge with HEXAGONAL_ARCHITECTURE_REFACTORING.md"
+      },
+      {
+        "file": "SECURITY_FINAL_REPORT.md",
+        "confidence": "low",
+        "reason": "Security assessment - compliance value",
+        "decision": "KEEP",
+        "action": "Move to docs/security/"
+      }
+    ]
+  },
+  "orphan_documents": {
+    "files": [],
+    "note": "No orphaned docs found - most are top-level implementation records"
+  },
+  "link_map": {
+    "README.md": {
+      "outbound": ["docs/", "infrastructure/terraform/"],
+      "inbound": []
+    },
+    "docs/README.md": {
+      "outbound": ["MONITORING_USAGE_GUIDE.md", "GLOBAL_DEPLOYMENT_GUIDE.md"],
+      "inbound": ["../README.md"]
+    }
+  },
+  "recommendations": {
+    "archive_immediately": [
+      "docs/SCRIPT_CLEANUP_SUMMARY.md",
+      "infrastructure/CLEANUP_SUMMARY.md"
+    ],
+    "consolidate": [
+      {
+        "target": "docs/IMPLEMENTATION_HISTORY.md",
+        "sources": ["*_SUMMARY.md files from root"],
+        "benefit": "Single source of truth for implementation timeline"
+      },
+      {
+        "target": "docs/FEATURES_COMPLETED.md",
+        "sources": ["*_COMPLETE.md files from root"],
+        "benefit": "Comprehensive feature completion log"
+      }
+    ],
+    "restructure": [
+      {
+        "action": "Create docs/architecture/ directory",
+        "move": [
+          "HEXAGONAL_ARCHITECTURE_REFACTORING.md",
+          "HEXAGONAL_ARCHITECTURE_SUCCESS.md"
+        ]
+      },
+      {
+        "action": "Create docs/security/ directory",
+        "move": [
+          "SECURITY_FINAL_REPORT.md",
+          "SECURITY_IMPLEMENTATION_COMPLETE.md"
+        ]
+      },
+      {
+        "action": "Create docs/archive/cleanup/ directory",
+        "move": [
+          "docs/SCRIPT_CLEANUP_SUMMARY.md",
+          "infrastructure/CLEANUP_SUMMARY.md"
+        ]
+      }
+    ]
+  },
+  "summary": {
+    "total_markdown_files": 89,
+    "active_documentation": 45,
+    "redundant_cleanup_docs": 2,
+    "implementation_summaries": 12,
+    "completion_markers": 15,
+    "orphaned": 0,
+    "action_required": "Archive 2 files, consolidate 27 files"
+  }
+}

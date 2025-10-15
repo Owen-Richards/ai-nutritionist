@@ -1,0 +1,394 @@
+name: 🚀 Deployment Pipeline
+
+on:
+  workflow_run:
+    workflows: ["🚀 Build and Test"]
+    types: [completed]
+    branches: [main, develop]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      deployment_strategy:
+        description: 'Deployment strategy'
+        required: true
+        default: 'blue-green'
+        type: choice
+        options:
+          - blue-green
+          - canary
+          - rolling
+      rollback:
+        description: 'Rollback to previous version'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+  AWS_REGION: us-east-1
+
+jobs:
+  pre-deployment:
+    name: 🔍 Pre-deployment Checks
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    outputs:
+      environment: ${{ steps.determine-env.outputs.environment }}
+      strategy: ${{ steps.determine-strategy.outputs.strategy }}
+      should_deploy: ${{ steps.checks.outputs.should_deploy }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Determine environment
+        id: determine-env
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "environment=${{ github.event.inputs.environment }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "environment=production" >> $GITHUB_OUTPUT
+          else
+            echo "environment=staging" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Determine deployment strategy
+        id: determine-strategy
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "strategy=${{ github.event.inputs.deployment_strategy }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ steps.determine-env.outputs.environment }}" == "production" ]]; then
+            echo "strategy=blue-green" >> $GITHUB_OUTPUT
+          else
+            echo "strategy=rolling" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Pre-deployment checks
+        id: checks
+        run: |
+          # Check if image exists
+          if docker manifest inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} > /dev/null 2>&1; then
+            echo "✅ Docker image found"
+            echo "should_deploy=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Docker image not found"
+            echo "should_deploy=false" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+          
+          # Check deployment window
+          current_hour=$(date +%H)
+          if [[ "${{ steps.determine-env.outputs.environment }}" == "production" ]] && [[ $current_hour -ge 22 || $current_hour -le 6 ]]; then
+            echo "⏰ Outside deployment window for production"
+            echo "should_deploy=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Notify deployment start
+        uses: actions/github-script@v6
+        with:
+          script: |
+            await github.rest.repos.createDeployment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              ref: context.sha,
+              environment: '${{ steps.determine-env.outputs.environment }}',
+              description: 'Deploying via ${{ steps.determine-strategy.outputs.strategy }} strategy',
+              auto_merge: false
+            });
+
+  deploy-staging:
+    name: 🏗️ Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: pre-deployment
+    if: needs.pre-deployment.outputs.environment == 'staging' && needs.pre-deployment.outputs.should_deploy == 'true'
+    environment:
+      name: staging
+      url: https://staging-api.ai-nutritionist.com
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy with SAM
+        run: |
+          sam deploy \
+            --config-env staging \
+            --parameter-overrides \
+              Environment=staging \
+              ImageUri=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset
+
+      - name: Run smoke tests
+        run: |
+          python tests/smoke/test_staging_endpoints.py \
+            --base-url https://staging-api.ai-nutritionist.com
+
+      - name: Update staging status
+        run: |
+          echo "✅ Staging deployment completed successfully"
+
+  deploy-production:
+    name: 🚀 Deploy to Production
+    runs-on: ubuntu-latest
+    needs: pre-deployment
+    if: needs.pre-deployment.outputs.environment == 'production' && needs.pre-deployment.outputs.should_deploy == 'true'
+    environment:
+      name: production
+      url: https://api.ai-nutritionist.com
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID_PROD }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY_PROD }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Blue-Green Deployment
+        if: needs.pre-deployment.outputs.strategy == 'blue-green'
+        run: |
+          # Deploy to green environment
+          sam deploy \
+            --config-env production-green \
+            --parameter-overrides \
+              Environment=production-green \
+              ImageUri=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset
+          
+          # Run comprehensive tests on green
+          python tests/smoke/test_production_endpoints.py \
+            --base-url https://green-api.ai-nutritionist.com
+          
+          # Switch traffic to green
+          aws apigateway put-stage \
+            --rest-api-id ${{ secrets.API_GATEWAY_ID }} \
+            --stage-name prod \
+            --patch-ops op=replace,path=/variables/target,value=green
+          
+          # Monitor for 5 minutes
+          sleep 300
+          
+          # Verify health
+          python scripts/health_check.py \
+            --url https://api.ai-nutritionist.com \
+            --timeout 60
+
+      - name: Canary Deployment
+        if: needs.pre-deployment.outputs.strategy == 'canary'
+        run: |
+          # Deploy canary version (10% traffic)
+          sam deploy \
+            --config-env production-canary \
+            --parameter-overrides \
+              Environment=production-canary \
+              ImageUri=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+              CanaryTrafficPercent=10 \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset
+          
+          # Monitor canary for 30 minutes
+          python scripts/canary_monitor.py \
+            --duration 1800 \
+            --error-threshold 1.0 \
+            --latency-threshold 2000
+          
+          # Promote to 50%
+          aws lambda update-alias \
+            --function-name ai-nutritionist-api \
+            --name prod \
+            --routing-config AdditionalVersionWeights="{\"$LATEST\":0.5}"
+          
+          # Monitor for another 15 minutes
+          python scripts/canary_monitor.py \
+            --duration 900 \
+            --error-threshold 0.5 \
+            --latency-threshold 1500
+          
+          # Full promotion
+          aws lambda update-alias \
+            --function-name ai-nutritionist-api \
+            --name prod \
+            --function-version $LATEST
+
+      - name: Rolling Deployment
+        if: needs.pre-deployment.outputs.strategy == 'rolling'
+        run: |
+          sam deploy \
+            --config-env production \
+            --parameter-overrides \
+              Environment=production \
+              ImageUri=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset
+
+      - name: Post-deployment verification
+        run: |
+          # Comprehensive health checks
+          python tests/smoke/test_production_endpoints.py \
+            --base-url https://api.ai-nutritionist.com
+          
+          # Performance verification
+          python tests/performance/production_load_test.py \
+            --duration 300 \
+            --users 100
+          
+          # Database health check
+          python scripts/db_health_check.py
+
+  rollback:
+    name: 🔄 Rollback
+    runs-on: ubuntu-latest
+    if: github.event.inputs.rollback == 'true' || failure()
+    needs: [deploy-staging, deploy-production]
+    environment:
+      name: ${{ needs.pre-deployment.outputs.environment }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Get previous deployment
+        id: previous
+        run: |
+          # Get the last successful deployment
+          previous_image=$(aws lambda get-function --function-name ai-nutritionist-api \
+            --query 'Code.ImageUri' --output text | grep -v ${{ github.sha }} | head -1)
+          echo "image=$previous_image" >> $GITHUB_OUTPUT
+
+      - name: Rollback deployment
+        run: |
+          echo "🔄 Rolling back to ${{ steps.previous.outputs.image }}"
+          
+          sam deploy \
+            --config-env ${{ needs.pre-deployment.outputs.environment }} \
+            --parameter-overrides \
+              Environment=${{ needs.pre-deployment.outputs.environment }} \
+              ImageUri=${{ steps.previous.outputs.image }} \
+            --no-confirm-changeset \
+            --no-fail-on-empty-changeset
+
+      - name: Verify rollback
+        run: |
+          python tests/smoke/test_endpoints.py \
+            --base-url https://${{ needs.pre-deployment.outputs.environment == 'production' && 'api' || 'staging-api' }}.ai-nutritionist.com
+
+      - name: Notify rollback
+        uses: actions/github-script@v6
+        with:
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: `Rollback performed on ${{ needs.pre-deployment.outputs.environment }}`,
+              body: `Deployment was rolled back to previous version due to issues.\n\nWorkflow: ${context.payload.workflow_run?.html_url}`,
+              labels: ['rollback', 'incident']
+            });
+
+  post-deployment:
+    name: 📊 Post-deployment
+    runs-on: ubuntu-latest
+    needs: [deploy-staging, deploy-production]
+    if: always() && (needs.deploy-staging.result == 'success' || needs.deploy-production.result == 'success')
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run integration tests
+        run: |
+          python tests/integration/post_deployment_tests.py \
+            --environment ${{ needs.pre-deployment.outputs.environment }}
+
+      - name: Performance monitoring setup
+        run: |
+          # Setup CloudWatch alarms
+          python scripts/setup_monitoring.py \
+            --environment ${{ needs.pre-deployment.outputs.environment }}
+
+      - name: Update deployment tracking
+        run: |
+          # Update deployment database
+          python scripts/track_deployment.py \
+            --version ${{ github.sha }} \
+            --environment ${{ needs.pre-deployment.outputs.environment }} \
+            --strategy ${{ needs.pre-deployment.outputs.strategy }}
+
+      - name: Generate deployment report
+        run: |
+          python scripts/deployment_report.py \
+            --version ${{ github.sha }} \
+            --environment ${{ needs.pre-deployment.outputs.environment }} \
+            --output deployment-report.html
+
+      - name: Upload deployment artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: deployment-report
+          path: deployment-report.html
+
+      - name: Notify success
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const environment = '${{ needs.pre-deployment.outputs.environment }}';
+            const strategy = '${{ needs.pre-deployment.outputs.strategy }}';
+            const url = environment === 'production' ? 
+              'https://api.ai-nutritionist.com' : 
+              'https://staging-api.ai-nutritionist.com';
+            
+            await github.rest.repos.createDeploymentStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              deployment_id: context.payload.deployment?.id,
+              state: 'success',
+              environment_url: url,
+              description: `Successfully deployed using ${strategy} strategy`
+            });
+
+  cleanup:
+    name: 🧹 Cleanup
+    runs-on: ubuntu-latest
+    needs: [post-deployment]
+    if: always()
+    
+    steps:
+      - name: Cleanup old images
+        run: |
+          # Keep only last 10 images
+          echo "🧹 Cleaning up old container images..."
+
+      - name: Cleanup old deployments
+        run: |
+          # Cleanup old blue-green environments
+          echo "🧹 Cleaning up old deployment artifacts..."
+
+      - name: Update status
+        run: |
+          echo "✅ Deployment pipeline completed"

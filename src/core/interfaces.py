@@ -8,20 +8,20 @@ implement, ensuring clean separation between business logic and infrastructure.
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Optional
 
-from ..models.user import User
-from ..models.meal_plan import MealPlan
+from ..models.user import UserProfile
+from ..models.meal_planning import GeneratedMealPlan
 
 
 class UserRepositoryInterface(ABC):
     """Interface for user data persistence."""
     
     @abstractmethod
-    async def get_user(self, user_id: str) -> Optional[User]:
+    async def get_user(self, user_id: str) -> Optional[UserProfile]:
         """Retrieve user by ID."""
         pass
     
     @abstractmethod
-    async def save_user(self, user: User) -> None:
+    async def save_user(self, user: UserProfile) -> None:
         """Save user data."""
         pass
     
@@ -49,7 +49,7 @@ class AIServiceInterface(ABC):
     """Interface for AI processing services."""
     
     @abstractmethod
-    async def generate_meal_plan(self, user_preferences: Dict[str, Any]) -> MealPlan:
+    async def generate_meal_plan(self, user_preferences: Dict[str, Any]) -> GeneratedMealPlan:
         """Generate personalized meal plan."""
         pass
     

@@ -1,5 +1,12 @@
 # AI Nutritionist Assistant Documentation
 
+## Prerequisites
+
+- Python 3.11 or higher
+- AWS SAM CLI
+- AWS Account with appropriate permissions
+- Node.js (for some development tools)
+
 ## Quick Start Checklist
 
 1. Install Python 3.11+ and AWS SAM CLI.
